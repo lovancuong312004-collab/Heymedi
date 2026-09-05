@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Eye, EyeOff, Phone, Lock, ArrowRight, ChevronRight, UserPlus } from "lucide-react";
+import { useState } from "react";
+import { Phone, ChevronRight, Eye, EyeOff, Lock, ArrowRight, UserPlus } from "lucide-react";
 import { supabase } from '../lib/supabase';
 
 interface Props {

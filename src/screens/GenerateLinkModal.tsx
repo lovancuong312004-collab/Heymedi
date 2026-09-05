@@ -45,7 +45,7 @@ export default function GenerateLinkModal({ isOpen, onClose, user }: Props) {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'family_links', filter: `patient_id=eq.${user.id}` },
-        (payload) => {
+        () => {
           // A caregiver just linked to us!
           alert("Tuyệt vời! Đã có người chăm sóc kết nối thành công với bạn.");
           onClose();

@@ -11,7 +11,7 @@ export default function SOSModal({ isOpen, onClose, contactName }: Props) {
   const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let timer: any;
     if (isOpen) {
       setCountdown(5);
       timer = setInterval(() => {

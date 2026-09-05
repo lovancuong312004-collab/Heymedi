@@ -10,7 +10,7 @@ interface Props {
 export default function FamilyScreen({ user }: Props) {
   const [isHealthProfileOpen, setIsHealthProfileOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
-  const [familyMembers, setFamilyMembers] = useState<any[]>([]);
+  const [familyMembers] = useState<any[]>([]);
 
   return (
     <div className="p-4 flex flex-col min-h-full bg-[#F4F7FB] pb-10">

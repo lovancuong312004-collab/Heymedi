@@ -47,7 +47,7 @@ export default function ScanLinkModal({ isOpen, onClose, onLinkSuccess, user }: 
             setCode(extractedCode);
             handleLink(extractedCode);
           },
-          (err) => {
+          () => {
             // ignore scan errors
           }
         );
