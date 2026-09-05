@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Phone, ChevronRight, Eye, EyeOff, Lock, ArrowRight, UserPlus } from "lucide-react";
+import { Phone, Eye, EyeOff, Lock, ArrowRight, UserPlus } from "lucide-react";
 import { supabase } from '../lib/supabase';
 
 interface Props {
@@ -131,17 +131,33 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
           {!loading && <ArrowRight size={20} />}
         </button>
 
-        {/* Demo hint box */}
-        <div className="mt-5 bg-[#F4F8FF] rounded-xl px-4 py-3 border border-[#DCE8FF] flex items-center gap-3 cursor-pointer">
-          <span className="text-xl">💡</span>
-          <p className="text-[#3267D6] text-[11px] font-medium leading-relaxed flex-1">
-            Demo: Nhập SĐT bắt đầu <b>0901...</b> — Giao diện người già | SĐT khác – Người chăm sóc
-          </p>
-          <ChevronRight size={16} className="text-[#3267D6]" />
+        {/* Divider Social */}
+        <div className="flex items-center gap-4 my-6">
+          <div className="flex-1 h-[1px] bg-gray-200" />
+          <span className="text-gray-400 text-sm font-semibold">hoặc đăng nhập với</span>
+          <div className="flex-1 h-[1px] bg-gray-200" />
+        </div>
+
+        {/* Social Buttons */}
+        <div className="flex items-center gap-3 mb-7">
+          <button className="flex-1 flex items-center justify-center gap-2.5 py-3.5 border border-gray-200 rounded-[14px] hover:bg-gray-50 active:scale-95 transition-all bg-white">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-5 h-5"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.7 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            <span className="text-[#1A2B4B] font-bold text-sm">Google</span>
+          </button>
+          
+          <button className="flex-1 flex items-center justify-center gap-2.5 py-3.5 border border-gray-200 rounded-[14px] hover:bg-gray-50 active:scale-95 transition-all bg-white">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            <span className="text-[#1A2B4B] font-bold text-sm">Facebook</span>
+          </button>
+
+          <button className="flex-1 flex items-center justify-center gap-2.5 py-3.5 border border-gray-200 rounded-[14px] hover:bg-gray-50 active:scale-95 transition-all bg-white">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="#000000"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.62-1.48 3.608-2.926 1.151-1.688 1.624-3.328 1.65-3.414-.035-.015-3.197-1.222-3.23-4.887-.026-3.076 2.505-4.549 2.62-4.622-1.442-2.106-3.677-2.39-4.48-2.428-1.942-.158-3.864 1.214-4.445 1.214zm4.22-3.132c.813-.984 1.36-2.35 1.211-3.712-1.164.047-2.6.776-3.44 1.761-.75.834-1.378 2.222-1.198 3.565 1.306.101 2.607-.635 3.427-1.614z"/></svg>
+            <span className="text-[#1A2B4B] font-bold text-sm">Apple</span>
+          </button>
         </div>
 
         {/* Divider */}
-        <div className="flex items-center gap-4 my-7">
+        <div className="flex items-center gap-4 my-2">
           <div className="flex-1 h-px bg-gray-200" />
           <span className="text-gray-500 text-[13px] font-semibold">Chưa có tài khoản?</span>
           <div className="flex-1 h-px bg-gray-200" />
