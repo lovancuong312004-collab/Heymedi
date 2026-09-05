@@ -10,11 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.115.0",
     "clsx": "^2.1.1",
+    "html5-qrcode": "^2.3.8",
     "lucide-react": "^1.40.0",
     "lunar-javascript": "^1.7.7",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-qr-code": "^2.2.0",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {

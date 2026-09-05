@@ -1,23 +1,41 @@
 import { useState } from "react";
-import { ArrowLeft, User, Phone, Lock, Eye, EyeOff, ChevronRight, UserCheck } from "lucide-react";
+import { ArrowLeft, User, Phone, Lock, Eye, EyeOff, ChevronRight, UserCheck, Loader2, Calendar, Activity, MapPin } from "lucide-react";
+import { supabase } from '../lib/supabase';
 
 interface Props {
   onDone: (role: "elderly" | "caregiver") => void;
   onBack: () => void;
 }
 
-type Step = "info" | "role";
+type Step = "info" | "profile" | "role";
 
 export default function RegisterScreen({ onDone, onBack }: Props) {
   const [step, setStep] = useState<Step>("info");
+  
+  // Thông tin cơ bản
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Thông tin hồ sơ (Mới)
+  const [dob, setDob] = useState("");
+  const [gender, setGender] = useState("Nam");
+  const [weight, setWeight] = useState("");
+  const [height, setHeight] = useState("");
+  const [address, setAddress] = useState("");
+
   const [selectedRole, setSelectedRole] = useState<"elderly" | "caregiver" | null>(null);
+  
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const handleInfoNext = () => {
     if (!name.trim() || !phone.trim() || !password.trim()) return;
+    setStep("profile");
+  };
+
+  const handleProfileNext = () => {
     setStep("role");
   };
 
@@ -25,27 +43,88 @@ export default function RegisterScreen({ onDone, onBack }: Props) {
     setSelectedRole(role);
   };
 
-  const handleDone = () => {
+  const handleDone = async () => {
     if (!selectedRole) return;
-    onDone(selectedRole);
+    
+    setLoading(true);
+    setErrorMsg("");
+    
+    try {
+      const inputVal = phone.trim();
+      const isEmail = inputVal.includes('@');
+      const authEmail = isEmail ? inputVal : `${inputVal.replace(/\s+/g, '')}@heymedi.com`;
+      
+      const roleStr = selectedRole === "elderly" ? "ELDERLY" : "CAREGIVER";
+      
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: authEmail,
+        password: password,
+        options: {
+          data: {
+            full_name: name,
+            role: roleStr,
+            phone: phone,
+            dob: dob,
+            gender: gender,
+            weight: weight,
+            height: height,
+            address: address
+          }
+        }
+      });
+
+      if (signUpError) {
+        setErrorMsg(signUpError.message);
+        setLoading(false);
+        return;
+      }
+
+      // Cố gắng Insert vào bảng users (Không báo lỗi cứng nếu bảng chưa tồn tại)
+      supabase.from('users').insert({
+        id: signUpData.user?.id,
+        phone: phone,
+        role: roleStr,
+        full_name: name
+      }).then(({ error: dbError }) => {
+        if (dbError) console.error("Lỗi khi lưu DB (Bảng users có thể chưa tạo):", dbError);
+      });
+
+      onDone(selectedRole);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Có lỗi xảy ra');
+    }
+    
+    setLoading(false);
   };
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-white">
       {/* Header */}
       <div className="flex items-center px-5 pt-12 pb-4 gap-3">
-        <button onClick={step === "role" ? () => setStep("info") : onBack} className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 active:scale-95 transition-all">
+        <button 
+          onClick={() => {
+            if (step === "role") setStep("profile");
+            else if (step === "profile") setStep("info");
+            else onBack();
+          }} 
+          className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 active:scale-95 transition-all"
+        >
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 className="text-xl font-bold text-[#1A2B4B]">{step === "info" ? "Tạo tài khoản" : "Chọn vai trò"}</h1>
-          <p className="text-gray-400 text-xs mt-0.5">Bước {step === "info" ? "1" : "2"} / 2</p>
+          <h1 className="text-xl font-bold text-[#1A2B4B]">
+            {step === "info" ? "Tạo tài khoản" : step === "profile" ? "Hồ sơ cá nhân" : "Chọn vai trò"}
+          </h1>
+          <p className="text-gray-400 text-xs mt-0.5">
+            Bước {step === "info" ? "1" : step === "profile" ? "2" : "3"} / 3
+          </p>
         </div>
 
         {/* Progress bar */}
         <div className="ml-auto flex gap-1.5">
-          <div className="w-8 h-1.5 rounded-full bg-primary" />
-          <div className={`w-8 h-1.5 rounded-full transition-colors ${step === "role" ? "bg-primary" : "bg-gray-200"}`} />
+          <div className="w-6 h-1.5 rounded-full bg-primary" />
+          <div className={`w-6 h-1.5 rounded-full transition-colors ${step === "profile" || step === "role" ? "bg-primary" : "bg-gray-200"}`} />
+          <div className={`w-6 h-1.5 rounded-full transition-colors ${step === "role" ? "bg-primary" : "bg-gray-200"}`} />
         </div>
       </div>
 
@@ -53,7 +132,7 @@ export default function RegisterScreen({ onDone, onBack }: Props) {
         {/* Step 1: Info */}
         {step === "info" && (
           <div className="flex flex-col gap-4">
-            <p className="text-gray-500 text-sm mb-2">Điền thông tin để tạo tài khoản</p>
+            <p className="text-gray-500 text-sm mb-2">Điền thông tin đăng nhập</p>
 
             {/* Name */}
             <div>
@@ -69,16 +148,16 @@ export default function RegisterScreen({ onDone, onBack }: Props) {
               </div>
             </div>
 
-            {/* Phone */}
+            {/* Phone/Email */}
             <div>
-              <label className="text-sm font-bold text-gray-600 mb-1.5 block">Số điện thoại</label>
+              <label className="text-sm font-bold text-gray-600 mb-1.5 block">Email hoặc Số điện thoại</label>
               <div className="flex items-center border-2 border-gray-200 rounded-2xl px-4 py-3.5 gap-3 focus-within:border-primary transition-colors bg-gray-50/50">
                 <Phone size={20} className="text-gray-400 shrink-0" />
                 <input
-                  type="tel"
+                  type="text"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  placeholder="Nhập số điện thoại..."
+                  placeholder="Nhập Email hoặc SĐT..."
                   className="flex-1 bg-transparent text-[#1A2B4B] font-semibold text-base outline-none placeholder:text-gray-400 placeholder:font-normal"
                 />
               </div>
@@ -112,7 +191,95 @@ export default function RegisterScreen({ onDone, onBack }: Props) {
           </div>
         )}
 
-        {/* Step 2: Role Selection */}
+        {/* Step 2: Profile */}
+        {step === "profile" && (
+          <div className="flex flex-col gap-4">
+            <p className="text-gray-500 text-sm mb-2">Thông tin này giúp theo dõi sức khỏe tốt hơn</p>
+
+            {/* DOB & Gender */}
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="text-sm font-bold text-gray-600 mb-1.5 block">Ngày sinh</label>
+                <div className="flex items-center border-2 border-gray-200 rounded-2xl px-4 py-3.5 gap-3 focus-within:border-primary transition-colors bg-gray-50/50">
+                  <Calendar size={20} className="text-gray-400 shrink-0" />
+                  <input
+                    type="date"
+                    value={dob}
+                    onChange={e => setDob(e.target.value)}
+                    className="flex-1 bg-transparent text-[#1A2B4B] font-semibold text-base outline-none"
+                  />
+                </div>
+              </div>
+              <div className="w-[120px]">
+                <label className="text-sm font-bold text-gray-600 mb-1.5 block">Giới tính</label>
+                <div className="flex items-center border-2 border-gray-200 rounded-2xl px-3 py-3.5 gap-2 focus-within:border-primary transition-colors bg-gray-50/50">
+                  <select
+                    value={gender}
+                    onChange={e => setGender(e.target.value)}
+                    className="flex-1 bg-transparent text-[#1A2B4B] font-semibold text-base outline-none appearance-none"
+                  >
+                    <option value="Nam">Nam</option>
+                    <option value="Nữ">Nữ</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Weight & Height */}
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="text-sm font-bold text-gray-600 mb-1.5 block">Chiều cao (cm)</label>
+                <div className="flex items-center border-2 border-gray-200 rounded-2xl px-4 py-3.5 gap-3 focus-within:border-primary transition-colors bg-gray-50/50">
+                  <Activity size={20} className="text-gray-400 shrink-0" />
+                  <input
+                    type="number"
+                    value={height}
+                    onChange={e => setHeight(e.target.value)}
+                    placeholder="VD: 165"
+                    className="flex-1 bg-transparent text-[#1A2B4B] font-semibold text-base outline-none"
+                  />
+                </div>
+              </div>
+              <div className="flex-1">
+                <label className="text-sm font-bold text-gray-600 mb-1.5 block">Cân nặng (kg)</label>
+                <div className="flex items-center border-2 border-gray-200 rounded-2xl px-4 py-3.5 gap-3 focus-within:border-primary transition-colors bg-gray-50/50">
+                  <Activity size={20} className="text-gray-400 shrink-0" />
+                  <input
+                    type="number"
+                    value={weight}
+                    onChange={e => setWeight(e.target.value)}
+                    placeholder="VD: 60"
+                    className="flex-1 bg-transparent text-[#1A2B4B] font-semibold text-base outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Address */}
+            <div>
+              <label className="text-sm font-bold text-gray-600 mb-1.5 block">Địa chỉ</label>
+              <div className="flex items-center border-2 border-gray-200 rounded-2xl px-4 py-3.5 gap-3 focus-within:border-primary transition-colors bg-gray-50/50">
+                <MapPin size={20} className="text-gray-400 shrink-0" />
+                <input
+                  type="text"
+                  value={address}
+                  onChange={e => setAddress(e.target.value)}
+                  placeholder="Nhập địa chỉ của bạn..."
+                  className="flex-1 bg-transparent text-[#1A2B4B] font-semibold text-base outline-none placeholder:text-gray-400 placeholder:font-normal"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleProfileNext}
+              className="mt-4 w-full bg-primary text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-primary/25 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+            >
+              Tiếp theo <ChevronRight size={20} />
+            </button>
+          </div>
+        )}
+
+        {/* Step 3: Role Selection */}
         {step === "role" && (
           <div className="flex flex-col gap-4">
             <p className="text-gray-500 text-sm mb-2">Bạn sẽ sử dụng ứng dụng với vai trò nào?</p>
@@ -193,17 +360,23 @@ export default function RegisterScreen({ onDone, onBack }: Props) {
               </div>
             </button>
 
+            {errorMsg && (
+              <div className="mb-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-sm font-semibold">{errorMsg}</p>
+              </div>
+            )}
+
             <button
               onClick={handleDone}
-              disabled={!selectedRole}
+              disabled={!selectedRole || loading}
               className={`mt-2 w-full py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-40 disabled:scale-100 shadow-lg ${
                 selectedRole === "caregiver"
                   ? "bg-emerald-500 text-white shadow-emerald-200"
                   : "bg-primary text-white shadow-primary/25"
               }`}
             >
-              <UserCheck size={22} />
-              Bắt đầu sử dụng
+              {loading ? <Loader2 size={22} className="animate-spin" /> : <UserCheck size={22} />}
+              {loading ? "Đang xử lý..." : "Bắt đầu sử dụng"}
             </button>
           </div>
         )}

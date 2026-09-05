@@ -18,12 +18,13 @@ import ScanAIModal from "./caregiver/ScanAIModal";
 import AddMedModal from "./caregiver/AddMedModal";
 
 interface Props {
+  user: any;
   onLogout: () => void;
 }
 
 type CaregiverTab = "dashboard" | "meds" | "notifications" | "reports" | "settings";
 
-export default function CaregiverApp({ onLogout }: Props) {
+export default function CaregiverApp({ user, onLogout }: Props) {
   const [activeTab, setActiveTab] = useState<CaregiverTab>("dashboard");
   const [isCallOpen, setIsCallOpen] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
@@ -63,6 +64,7 @@ export default function CaregiverApp({ onLogout }: Props) {
       <div className="flex-1 overflow-y-auto min-h-0 pb-24">
         {activeTab === "dashboard" && (
           <CaregiverDashboard
+            user={user}
             onOpenCall={() => setIsCallOpen(true)}
             onOpenScan={() => setIsScanOpen(true)}
             onOpenAddMed={() => setIsAddMedOpen(true)}
@@ -82,7 +84,7 @@ export default function CaregiverApp({ onLogout }: Props) {
           />
         )}
         {activeTab === "reports" && <AIReportScreen />}
-        {activeTab === "settings" && <CaregiverSettings onLogout={onLogout} />}
+        {activeTab === "settings" && <CaregiverSettings user={user} onLogout={onLogout} />}
       </div>
 
       {/* Bottom Navigation - Matches ElderlyApp prototype styling */}

@@ -1,9 +1,32 @@
-import { Plus, ChevronRight, Heart, CheckCircle2 } from "lucide-react";
+import { useState } from "react";
+import { Plus, ChevronRight, Heart, CheckCircle2, UserPlus } from "lucide-react";
+import HealthProfileModal from "./screens/HealthProfileModal";
+import GenerateLinkModal from "./screens/GenerateLinkModal";
 
-export default function FamilyScreen() {
+interface Props {
+  user: any;
+}
+
+export default function FamilyScreen({ user }: Props) {
+  const [isHealthProfileOpen, setIsHealthProfileOpen] = useState(false);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [familyMembers, setFamilyMembers] = useState<any[]>([]);
+
   return (
     <div className="p-4 flex flex-col min-h-full bg-[#F4F7FB] pb-10">
       
+      <HealthProfileModal 
+        isOpen={isHealthProfileOpen}
+        onClose={() => setIsHealthProfileOpen(false)}
+        user={user}
+      />
+
+      <GenerateLinkModal 
+        isOpen={isLinkModalOpen}
+        onClose={() => setIsLinkModalOpen(false)}
+        user={user}
+      />
+
       {/* 1. Header Bar */}
       <div className="flex justify-center items-center py-2 mb-3">
         <h1 className="text-xl font-bold text-[#1A2B4B] tracking-tight">Gia đình</h1>
@@ -11,7 +34,7 @@ export default function FamilyScreen() {
 
       {/* 2. Top Card: Hồ sơ sức khỏe của tôi */}
       <div 
-        onClick={() => alert("Mở Hồ sơ sức khỏe của tôi")}
+        onClick={() => setIsHealthProfileOpen(true)}
         className="bg-white rounded-3xl p-4 flex items-center justify-between border border-blue-50 shadow-sm cursor-pointer hover:bg-blue-50/30 active:scale-[0.98] transition-all mb-5 group"
       >
         <div className="flex items-center gap-3.5 min-w-0">
@@ -30,77 +53,50 @@ export default function FamilyScreen() {
         <ChevronRight className="text-gray-300 group-hover:text-gray-500 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" size={18} />
       </div>
 
-      {/* 3. Thành viên gia đình */}
+      {/* 3. Thành viên gia đình & Người chăm sóc */}
       <div className="mb-5">
-        <div className="flex justify-between items-center mb-2.5 px-1">
-          <h2 className="text-[#1A2B4B] font-bold text-base">Thành viên gia đình</h2>
+        <div className="flex justify-between items-center mb-3 px-1">
+          <h2 className="text-[#1A2B4B] font-bold text-base">Thành viên đã liên kết</h2>
           <button 
-            onClick={() => alert("Thêm thành viên mới")}
+            onClick={() => setIsLinkModalOpen(true)}
             className="flex items-center gap-1 text-primary font-bold text-xs bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-full active:scale-95 transition-all"
           >
             <Plus size={14} strokeWidth={3} />
-            <span>Thêm thành viên</span>
+            <span>Thêm mới</span>
           </button>
         </div>
         
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 flex flex-col overflow-hidden">
-          <MemberItem 
-            name="Bà Lan (Vợ)"
-            role="Đã liên kết"
-            imgSrc="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face"
-            hasBorder
-          />
-          <MemberItem 
-            name="Cháu An (Con trai)"
-            role="Người chăm sóc"
-            imgSrc="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop&crop=face"
-            hasBorder
-          />
-          <MemberItem 
-            name="Chị Hương (Con gái)"
-            role="Đã liên kết"
-            imgSrc="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face"
-          />
-        </div>
-      </div>
-
-      {/* 4. Người chăm sóc */}
-      <div className="mb-5">
-        <div className="flex justify-between items-center mb-2.5 px-1">
-          <h2 className="text-[#1A2B4B] font-bold text-base">Người chăm sóc</h2>
-          <button 
-            onClick={() => alert("Liên kết người chăm sóc")}
-            className="flex items-center gap-1 text-primary font-bold text-xs bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-full active:scale-95 transition-all"
-          >
-            <Plus size={14} strokeWidth={3} />
-            <span>Liên kết</span>
-          </button>
-        </div>
-        
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <img 
-              src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop&crop=face" 
-              alt="Cháu An" 
-              className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm shrink-0" 
-            />
-            <div className="min-w-0">
-              <h4 className="text-[#1A2B4B] font-bold text-base leading-tight truncate">
-                Cháu An <span className="text-gray-500 font-normal text-xs">(Con trai)</span>
-              </h4>
-              <p className="text-gray-500 text-xs font-semibold mt-1">
-                SĐT: 0901 234 567
-              </p>
+        {familyMembers.length === 0 ? (
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-8 flex flex-col items-center justify-center text-center">
+            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-3 text-primary">
+              <UserPlus size={28} />
             </div>
+            <h3 className="text-[#1A2B4B] font-bold text-base mb-1">Chưa có ai liên kết</h3>
+            <p className="text-gray-500 text-sm mb-4">Kết nối với người thân để họ giúp bạn theo dõi lịch uống thuốc.</p>
+            <button 
+              onClick={() => setIsLinkModalOpen(true)}
+              className="bg-primary text-white font-bold text-sm px-6 py-2.5 rounded-xl shadow-md shadow-primary/20 active:scale-95 transition-all"
+            >
+              Liên kết bằng Mã / QR
+            </button>
           </div>
-          <span className="px-3 py-1.5 rounded-full font-bold text-xs bg-emerald-50 text-emerald-600 border border-emerald-200/80 shrink-0 select-none">
-            Đang chăm sóc
-          </span>
-        </div>
+        ) : (
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 flex flex-col overflow-hidden">
+            {familyMembers.map((member, idx) => (
+              <MemberItem 
+                key={member.id}
+                name={member.name}
+                role={member.role}
+                imgSrc={member.imgSrc}
+                hasBorder={idx < familyMembers.length - 1}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 5. Quyền của người chăm sóc */}
-      <div className="bg-white/70 rounded-3xl border border-gray-100/80 p-4">
+      <div className="bg-white/70 rounded-3xl border border-gray-100/80 p-4 mt-auto">
         <h3 className="text-[#1A2B4B] font-bold text-sm mb-3">Quyền của người chăm sóc</h3>
         <div className="flex flex-col gap-2.5">
           <PermissionItem text="Xem lịch uống thuốc" />

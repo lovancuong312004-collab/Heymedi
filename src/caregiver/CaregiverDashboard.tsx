@@ -11,9 +11,11 @@ import {
   ChevronRight,
   Hand
 } from "lucide-react";
+import ScanLinkModal from "../screens/ScanLinkModal";
 import { Lunar } from "lunar-javascript";
 
 interface Props {
+  user: any;
   onOpenCall: () => void;
   onOpenScan: () => void;
   onOpenAddMed: () => void;
@@ -33,12 +35,16 @@ interface CaregiverMedItem {
 }
 
 export default function CaregiverDashboard({
+  user,
   onOpenCall,
   onOpenScan,
   onOpenAddMed,
   onNavigateTab
 }: Props) {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [isLinked, setIsLinked] = useState(false);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [patientName, setPatientName] = useState("");
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentDate(new Date()), 1000);
@@ -52,44 +58,10 @@ export default function CaregiverDashboard({
   const lunarString = `(Ngày ${String(lunar.getDay()).padStart(2, "0")} tháng ${String(lunar.getMonth()).padStart(2, "0")} Âm lịch)`;
 
   const [todayMeds, setTodayMeds] = useState<CaregiverMedItem[]>([
-    {
-      id: "1",
-      time: "08:00",
-      period: "Sáng",
-      status: "done",
-      name: "Amlodipine 5mg",
-      dosage: "1 viên",
-      instruction: "Uống sau ăn sáng",
-      confirmedAt: "08:05"
-    },
-    {
-      id: "2",
-      time: "12:00",
-      period: "Trưa",
-      status: "overdue",
-      name: "Metformin 500mg",
-      dosage: "1 viên",
-      instruction: "Uống sau ăn trưa",
-      overdueMins: 35
-    },
-    {
-      id: "3",
-      time: "20:00",
-      period: "Tối",
-      status: "future",
-      name: "Atorvastatin 10mg",
-      dosage: "1 viên",
-      instruction: "Uống sau ăn tối"
-    },
-    {
-      id: "4",
-      time: "22:00",
-      period: "Trước ngủ",
-      status: "future",
-      name: "Vitamin B1 250mg",
-      dosage: "1 viên",
-      instruction: "Uống trước khi ngủ"
-    }
+    { id: "1", time: "08:00", period: "Sáng", status: "done", name: "Amlodipine 5mg", dosage: "1 viên", instruction: "Uống sau ăn sáng", confirmedAt: "08:05" },
+    { id: "2", time: "12:00", period: "Trưa", status: "overdue", name: "Metformin 500mg", dosage: "1 viên", instruction: "Uống sau ăn trưa", overdueMins: 35 },
+    { id: "3", time: "20:00", period: "Tối", status: "future", name: "Atorvastatin 10mg", dosage: "1 viên", instruction: "Uống sau ăn tối" },
+    { id: "4", time: "22:00", period: "Trước ngủ", status: "future", name: "Vitamin B1 250mg", dosage: "1 viên", instruction: "Uống trước khi ngủ" }
   ]);
 
   const completedCount = todayMeds.filter((m) => m.status === "done").length;
@@ -101,6 +73,35 @@ export default function CaregiverDashboard({
       )
     );
   };
+
+  if (!isLinked) {
+    return (
+      <div className="p-5 flex flex-col items-center justify-center h-full animate-fade-in bg-white m-4 rounded-3xl shadow-sm border border-gray-100 text-center min-h-[70vh]">
+        <ScanLinkModal 
+          isOpen={isLinkModalOpen}
+          onClose={() => setIsLinkModalOpen(false)}
+          user={user}
+          onLinkSuccess={(name) => {
+            setPatientName(name);
+            setIsLinked(true);
+          }}
+        />
+        <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mb-6 text-primary border-4 border-white shadow-sm">
+          <Scan size={40} />
+        </div>
+        <h2 className="text-[#1a2b4b] font-bold text-2xl mb-2">Chưa có liên kết</h2>
+        <p className="text-gray-500 text-sm mb-8 px-4 leading-relaxed">
+          Bạn cần liên kết với tài khoản của người bệnh để có thể theo dõi lịch uống thuốc và gửi nhắc nhở.
+        </p>
+        <button 
+          onClick={() => setIsLinkModalOpen(true)}
+          className="w-full max-w-[250px] bg-primary text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-primary/25 active:scale-95 transition-all flex items-center justify-center gap-2"
+        >
+          <Plus size={20} /> LIÊN KẾT NGAY
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-5 flex flex-col gap-4 h-full animate-fade-in">
@@ -118,7 +119,7 @@ export default function CaregiverDashboard({
           <div>
             <p className="text-gray-500 text-xs font-medium">Người chăm sóc,</p>
             <div className="flex items-center gap-1">
-              <h1 className="text-lg font-bold text-[#1a2b4b]">Cháu An</h1>
+              <h1 className="text-lg font-bold text-[#1a2b4b]">{user?.user_metadata?.full_name || "Khách"}</h1>
               <Hand size={18} className="text-amber-400" fill="currentColor" />
             </div>
           </div>
@@ -129,11 +130,11 @@ export default function CaregiverDashboard({
           <div className="w-6 h-6 rounded-full overflow-hidden border border-gray-200 shrink-0">
             <img 
               src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face" 
-              alt="Ông Minh" 
+              alt={patientName} 
               className="w-full h-full object-cover"
             />
           </div>
-          <span className="text-xs font-bold text-[#1a2b4b]">Ông Minh (Bố)</span>
+          <span className="text-xs font-bold text-[#1a2b4b]">{patientName}</span>
         </div>
       </div>
 
@@ -198,7 +199,7 @@ export default function CaregiverDashboard({
               className="flex-1 bg-danger text-white py-4 rounded-2xl font-bold text-lg shadow-[0_4px_14px_rgba(220,38,38,0.3)] transition-transform active:scale-95 flex items-center justify-center gap-2"
             >
               <Phone size={20} className="fill-white" />
-              GỌI NHẮC ÔNG MINH
+              GỌI NHẮC {patientName.toUpperCase()}
             </button>
             <button
               onClick={() => handleMarkDone("2")}
@@ -222,7 +223,7 @@ export default function CaregiverDashboard({
             <Plus size={22} strokeWidth={3} />
           </div>
           <div>
-            <h3 className="text-[#1a2b4b] font-bold text-sm leading-tight">Thêm thuốc cho Ông Minh</h3>
+            <h3 className="text-[#1a2b4b] font-bold text-sm leading-tight">Thêm thuốc cho {patientName}</h3>
             <p className="text-gray-500 text-xs mt-0.5 leading-tight">Cài đặt giờ nhắc & liều lượng</p>
           </div>
         </div>
@@ -237,10 +238,10 @@ export default function CaregiverDashboard({
         </div>
       </div>
 
-      {/* 5. Timeline Today for Ông Minh (Matches MedsScreen card style) */}
+      {/* 5. Timeline Today */}
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex flex-col gap-4">
         <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-          <h3 className="text-[#1a2b4b] font-bold text-base">Lịch trình hôm nay của Ông Minh</h3>
+          <h3 className="text-[#1a2b4b] font-bold text-base">Lịch trình hôm nay của {patientName}</h3>
           <button
             onClick={() => onNavigateTab("meds")}
             className="text-primary text-xs font-bold flex items-center gap-0.5 hover:underline"

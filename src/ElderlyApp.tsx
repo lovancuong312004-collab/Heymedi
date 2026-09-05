@@ -8,12 +8,13 @@ import SettingsScreen from "./SettingsScreen";
 import MedicationAlertScreen from "./screens/MedicationAlertScreen";
 
 interface Props {
+  user: any;
   onLogout: () => void;
 }
 
 type ElderlyTab = "home" | "meds" | "family" | "settings";
 
-export default function ElderlyApp({ onLogout }: Props) {
+export default function ElderlyApp({ user, onLogout }: Props) {
   const [activeTab, setActiveTab] = useState<ElderlyTab>("home");
   const [showAlert, setShowAlert] = useState(false);
 
@@ -30,10 +31,10 @@ export default function ElderlyApp({ onLogout }: Props) {
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto pb-24 min-h-0">
-        {activeTab === "home" && <HomeScreen onShowAlert={() => setShowAlert(true)} onLogout={onLogout} />}
+        {activeTab === "home" && <HomeScreen user={user} onShowAlert={() => setShowAlert(true)} onLogout={onLogout} />}
         {activeTab === "meds" && <MedsScreen />}
-        {activeTab === "family" && <FamilyScreen />}
-        {activeTab === "settings" && <SettingsScreen onLogout={onLogout} />}
+        {activeTab === "family" && <FamilyScreen user={user} />}
+        {activeTab === "settings" && <SettingsScreen user={user} onLogout={onLogout} />}
       </div>
 
       {/* Bottom Navigation */}

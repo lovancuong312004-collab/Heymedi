@@ -14,13 +14,15 @@ import {
 } from "lucide-react";
 
 interface Props {
+  user: any;
   onLogout: () => void;
 }
 
-export default function CaregiverSettings({ onLogout }: Props) {
+export default function CaregiverSettings({ user, onLogout }: Props) {
   const [autoAlert, setAutoAlert] = useState(true);
   const [dailyAiReport, setDailyAiReport] = useState(true);
   const [aiVoiceCall, setAiVoiceCall] = useState(false);
+  const meta = user?.user_metadata || {};
 
   return (
     <div className="p-5 flex flex-col min-h-full bg-[#F4F7FB] animate-fade-in">
@@ -35,18 +37,18 @@ export default function CaregiverSettings({ onLogout }: Props) {
         <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 border-2 border-white shadow-sm shrink-0">
           <img 
             src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop&crop=face" 
-            alt="Cháu An" 
+            alt="Avatar" 
             className="w-full h-full object-cover"
           />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-bold text-[#1a2b4b] truncate">Cháu An</h3>
+            <h3 className="text-base font-bold text-[#1a2b4b] truncate">{meta.full_name || "Khách"}</h3>
             <span className="text-[10px] font-bold bg-[#EBF1FF] text-primary px-2 py-0.5 rounded-full shrink-0">
               Người chăm sóc
             </span>
           </div>
-          <p className="text-xs text-gray-500 font-medium mt-0.5">SĐT: 0901 234 567</p>
+          <p className="text-xs text-gray-500 font-medium mt-0.5">SĐT: {meta.phone || "Chưa cập nhật"}</p>
           <p className="text-xs text-success font-bold mt-0.5 flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-success inline-block" />
             Đang quản lý: Ông Minh (Bố)

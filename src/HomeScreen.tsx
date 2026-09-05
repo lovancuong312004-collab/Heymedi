@@ -4,12 +4,13 @@ import { Lunar } from "lunar-javascript";
 import SOSModal from "./screens/SOSModal";
 
 interface Props {
+  user: any;
   onShowAlert: () => void;
   onLogout: () => void;
 }
 
-export default function HomeScreen({ onShowAlert }: Props) {
-  const userName = "Ông Minh";
+export default function HomeScreen({ user, onShowAlert }: Props) {
+  const userName = user?.user_metadata?.full_name || "Ông/Bà";
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isSOSOpen, setIsSOSOpen] = useState(false);
 

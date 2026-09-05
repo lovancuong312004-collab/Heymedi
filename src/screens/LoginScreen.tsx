@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Eye, EyeOff, Phone, Lock, ArrowRight, Pill, ClipboardList, Users, UserPlus, ChevronRight, Plus, Heart } from "lucide-react";
+import React, { useState } from 'react';
+import { Eye, EyeOff, Phone, Lock, ArrowRight, ChevronRight, UserPlus } from "lucide-react";
+import { supabase } from '../lib/supabase';
 
 interface Props {
   onLogin: (role: "elderly" | "caregiver") => void;
@@ -11,19 +12,48 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!phone.trim() || !password.trim()) {
       setError("Vui lòng nhập đầy đủ thông tin");
       return;
     }
+    
+    setLoading(true);
     setError("");
-    // Demo: phone bắt đầu bằng "0901" → elderly, còn lại → caregiver
-    if (phone.startsWith("0901")) {
-      onLogin("elderly");
-    } else {
-      onLogin("caregiver");
+    
+    try {
+      const inputVal = phone.trim();
+      const isEmail = inputVal.includes('@');
+      const authEmail = isEmail ? inputVal : `${inputVal.replace(/\s+/g, '')}@heymedi.com`;
+      
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: authEmail,
+        password: password
+      });
+
+      if (signInError) {
+        if (signInError.message === 'Email not confirmed') {
+          setError('Lỗi: Bạn chưa tắt tính năng Xác nhận Email trên Supabase!');
+        } else if (signInError.message === 'Invalid login credentials') {
+          setError('Sai số điện thoại hoặc mật khẩu.');
+        } else {
+          setError(`Lỗi từ Supabase: ${signInError.message}`);
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Đăng nhập thành công, fetch role từ user_metadata
+      const role = data.user?.user_metadata?.role;
+      onLogin(role === 'ELDERLY' ? 'elderly' : 'caregiver');
+
+    } catch (err: any) {
+      setError(err.message || 'Có lỗi xảy ra');
     }
+    
+    setLoading(false);
   };
 
   return (
@@ -53,16 +83,16 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
           </div>
         )}
 
-        {/* Phone */}
+        {/* Identifier */}
         <div className="mb-5">
-          <label className="text-[15px] font-bold text-[#1A2B4B] mb-2 block">Số điện thoại</label>
+          <label className="text-[15px] font-bold text-[#1A2B4B] mb-2 block">Email hoặc Số điện thoại</label>
           <div className="flex items-center border border-gray-200 rounded-xl px-4 py-3.5 gap-3 focus-within:border-[#2166F3] focus-within:ring-2 focus-within:ring-[#2166F3]/20 transition-all bg-[#FCFDFE]">
             <Phone size={20} className="text-gray-400 shrink-0" />
             <input
-              type="tel"
+              type="text"
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              placeholder="Nhập số điện thoại..."
+              placeholder="Nhập Email hoặc SĐT..."
               className="flex-1 bg-transparent text-[#1A2B4B] font-semibold text-[15px] outline-none placeholder:text-gray-400 placeholder:font-normal"
             />
           </div>
@@ -94,10 +124,11 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
         {/* Login button */}
         <button
           onClick={handleLogin}
-          className="w-full bg-[#2166F3] hover:bg-[#1A56DB] text-white py-[18px] rounded-xl font-bold text-[17px] shadow-lg shadow-[#2166F3]/30 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+          disabled={loading}
+          className="w-full bg-[#2166F3] hover:bg-[#1A56DB] disabled:bg-gray-400 text-white py-[18px] rounded-xl font-bold text-[17px] shadow-lg shadow-[#2166F3]/30 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
         >
-          Đăng nhập
-          <ArrowRight size={20} />
+          {loading ? 'Đang xử lý...' : 'Đăng nhập'}
+          {!loading && <ArrowRight size={20} />}
         </button>
 
         {/* Demo hint box */}

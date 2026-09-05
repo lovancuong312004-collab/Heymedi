@@ -1,14 +1,28 @@
 import { User, Bell, Volume2, Globe, Cloud, HelpCircle, Info, ChevronRight, LogOut } from "lucide-react";
 
 interface Props {
+  user: any;
   onLogout: () => void;
 }
 
-export default function SettingsScreen({ onLogout }: Props) {
+export default function SettingsScreen({ user, onLogout }: Props) {
+  const meta = user?.user_metadata || {};
+
   return (
     <div className="p-5 flex flex-col min-h-full bg-[#F4F7FB]">
       <div className="flex justify-center items-center mb-6 mt-2">
         <h1 className="text-2xl font-bold text-[#1a2b4b]">Cài đặt</h1>
+      </div>
+
+      {/* Profile Card */}
+      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex items-center gap-4 mb-6">
+        <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-200 shrink-0">
+          <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face" alt="Avatar" className="w-full h-full object-cover" />
+        </div>
+        <div className="flex-1">
+          <h2 className="text-[#1a2b4b] font-bold text-xl mb-0.5">{meta.full_name || "Khách"}</h2>
+          <p className="text-gray-500 text-sm">{meta.phone || "Chưa cập nhật SĐT"}</p>
+        </div>
       </div>
 
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden mb-6">
