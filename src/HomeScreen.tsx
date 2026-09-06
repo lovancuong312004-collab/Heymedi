@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Calendar, Volume2, Scan, AlertCircle, Loader2 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import SOSModal from "./screens/SOSModal";
-import { getTodaySchedule, markAsTaken, Reminder } from "./services/medicationService";
+import { getTodaySchedule, markAsTaken, type Reminder } from "./services/medicationService";
 
 interface Props {
   user: any;

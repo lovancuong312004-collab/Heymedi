@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Calendar, Phone, Plus, Scan, CheckCircle2, Clock, AlertCircle, ChevronRight, Sparkles, Loader2, Hand } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import ScanLinkModal from "../screens/ScanLinkModal";
-import { getTodaySchedule, getOverdueReminders, markAsTaken, Reminder } from "../services/medicationService";
+import { getTodaySchedule, getOverdueReminders, markAsTaken, type Reminder } from "../services/medicationService";
 import { supabase } from "../lib/supabase";
 
 interface Props {
