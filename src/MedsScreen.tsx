@@ -1,39 +1,75 @@
 import { useState, useEffect } from "react";
-import { Plus, Calendar, CheckCircle2, Clock, Scan } from "lucide-react";
+import { Plus, Calendar, CheckCircle2, Clock, Scan, Loader2 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import { cn } from "./lib/utils";
 import AddMedModal from "./caregiver/AddMedModal";
 import ScanAIModal from "./caregiver/ScanAIModal";
+import { getTodaySchedule, type Reminder } from "./services/medicationService";
 
-export default function MedsScreen() {
+interface Props {
+  user: any;
+}
+
+export default function MedsScreen({ user }: Props) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [activeTab, setActiveTab] = useState("Tất cả");
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
+  
+  const [schedule, setSchedule] = useState<Reminder[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentDate(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (user?.id) {
+      loadSchedule();
+    } else {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  const loadSchedule = async () => {
+    try {
+      setLoading(true);
+      const data = await getTodaySchedule(user.id);
+      setSchedule(data);
+    } catch (error) {
+      console.error("Failed to load schedule:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const lunar = Lunar.fromDate(currentDate);
   const dayOfWeek = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"][currentDate.getDay()];
   const dateString = `${dayOfWeek}, ${String(currentDate.getDate()).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
   const lunarString = `(${String(lunar.getDay()).padStart(2, '0')}/${String(lunar.getMonth()).padStart(2, '0')} Âm lịch)`;
 
-  const allMeds = [
-    { time: "08:00", period: "Sáng", status: "done", name: "Amlodipine 5mg", dosage: "1 viên", instruction: "Uống sau ăn sáng" },
-    { time: "12:00", period: "Trưa", status: "pending", name: "Metformin 500mg", dosage: "1 viên", instruction: "Uống sau ăn trưa" },
-    { time: "20:00", period: "Tối", status: "future", name: "Atorvastatin 10mg", dosage: "1 viên", instruction: "Uống sau ăn tối" },
-    { time: "22:00", period: "Trước ngủ", status: "future", name: "Vitamin B1", dosage: "1 viên", instruction: "Uống trước khi ngủ" }
-  ];
-
-  const filteredMeds = allMeds.filter(med => activeTab === "Tất cả" || med.period === activeTab);
+  const filteredMeds = schedule.filter(med => {
+    if (activeTab === "Tất cả") return true;
+    const hour = new Date(med.scheduled_time).getHours();
+    let period = "Sáng";
+    if (hour >= 11 && hour <= 14) period = "Trưa";
+    else if (hour > 14 && hour <= 20) period = "Tối";
+    else if (hour > 20) period = "Trước ngủ";
+    
+    return period === activeTab;
+  });
 
   return (
     <>
-      <AddMedModal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} onAdd={() => setIsAddOpen(false)} />
-      <ScanAIModal isOpen={isScanOpen} onClose={() => setIsScanOpen(false)} onAddMedSuccess={() => setIsScanOpen(false)} />
+      <AddMedModal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} onAdd={() => {
+        setIsAddOpen(false);
+        loadSchedule();
+      }} />
+      <ScanAIModal isOpen={isScanOpen} onClose={() => setIsScanOpen(false)} onAddMedSuccess={() => {
+        setIsScanOpen(false);
+        loadSchedule();
+      }} />
 
       <div className="p-5 flex flex-col min-h-full bg-[#F4F7FB]">
         <div className="flex justify-between items-center mb-4 relative mt-2">
@@ -77,18 +113,23 @@ export default function MedsScreen() {
           </div>
 
           <div className="p-5 flex flex-col gap-8 relative min-h-[250px]">
-            {filteredMeds.length > 0 ? (
+            {loading ? (
+              <div className="flex flex-col items-center justify-center h-full py-10 opacity-70">
+                <Loader2 size={32} className="text-primary animate-spin mb-2" />
+                <p className="text-gray-500">Đang tải lịch thuốc...</p>
+              </div>
+            ) : filteredMeds.length > 0 ? (
               <>
                 <div className="absolute left-[73px] top-10 bottom-12 w-0.5 bg-gray-200" />
-                {filteredMeds.map((med, i) => (
-                  <TimelineItem key={i} {...med} />
+                {filteredMeds.map((med) => (
+                  <TimelineItem key={med.id} med={med} />
                 ))}
               </>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-center py-10 opacity-70">
                 <CheckCircle2 size={48} className="text-gray-300 mb-3" strokeWidth={1.5} />
                 <p className="text-gray-500 font-bold text-lg">Không có cữ thuốc nào</p>
-                <p className="text-gray-400 text-sm mt-1">Bạn có thể nghỉ ngơi vào buổi {activeTab.toLowerCase()}</p>
+                <p className="text-gray-400 text-sm mt-1">Bà/Ông có thể nghỉ ngơi vào buổi {activeTab.toLowerCase()}</p>
               </div>
             )}
           </div>
@@ -111,15 +152,24 @@ export default function MedsScreen() {
   );
 }
 
-function TimelineItem({ time, period, status, name, dosage, instruction }: any) {
-  const isDone = status === "done";
-  const isPending = status === "pending";
+function TimelineItem({ med }: { med: Reminder }) {
+  const isDone = med.status === "taken";
+  const isPending = med.status === "pending";
   const timeColor = isDone ? "text-success" : isPending ? "text-orange-500" : "text-gray-400";
+  
+  const d = new Date(med.scheduled_time);
+  const hour = d.getHours();
+  const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  let periodStr = "Sáng";
+  if (hour >= 11 && hour <= 14) periodStr = "Trưa";
+  else if (hour > 14 && hour <= 20) periodStr = "Tối";
+  else if (hour > 20) periodStr = "Đêm";
+
   return (
     <div className="flex items-start gap-4 relative z-10">
       <div className="w-[50px] flex flex-col items-center shrink-0 pt-1">
-        <span className={cn("font-bold text-xl leading-none", timeColor)}>{time}</span>
-        <span className={cn("text-xs font-bold mt-1", timeColor)}>{period}</span>
+        <span className={cn("font-bold text-xl leading-none", timeColor)}>{timeStr}</span>
+        <span className={cn("text-xs font-bold mt-1", timeColor)}>{periodStr}</span>
       </div>
       <div className="w-6 h-6 shrink-0 bg-[#F4F7FB] flex items-center justify-center rounded-full mt-1 z-10">
         {isDone    && <CheckCircle2 className="text-success fill-success/20" size={26} strokeWidth={3} />}
@@ -127,13 +177,17 @@ function TimelineItem({ time, period, status, name, dosage, instruction }: any) 
         {!isDone && !isPending && <Clock className="text-gray-400 fill-gray-100" size={26} strokeWidth={3} />}
       </div>
       <div className="flex-1 flex items-center gap-3">
-        <div className="w-16 h-16 rounded-2xl bg-gray-50 border border-gray-100 overflow-hidden shrink-0 shadow-sm flex items-center justify-center">
-          <span className="text-3xl">💊</span>
+        <div className="w-16 h-16 rounded-full bg-gray-50 border-2 border-white shadow-sm overflow-hidden shrink-0 flex items-center justify-center">
+          {med.medication?.image_url ? (
+            <img src={med.medication.image_url} alt="Ảnh thuốc" className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-3xl">💊</span>
+          )}
         </div>
         <div className="flex flex-col">
-          <span className="text-[#1a2b4b] font-extrabold text-lg leading-tight">{name}</span>
-          <span className="text-gray-600 text-sm mt-1">{dosage}</span>
-          <span className="text-gray-600 text-sm mt-0.5">{instruction}</span>
+          <span className="text-[#1a2b4b] font-extrabold text-lg leading-tight">{med.medication?.name || "Thuốc"}</span>
+          <span className="text-gray-600 text-sm mt-1">{med.medication?.dosage}</span>
+          <span className="text-gray-600 text-sm mt-0.5">{med.medication?.instructions}</span>
         </div>
       </div>
     </div>

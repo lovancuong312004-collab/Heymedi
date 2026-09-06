@@ -1,16 +1,17 @@
 import { useState, useEffect } from "react";
-import { Calendar, Volume2, Scan, AlertCircle, Loader2 } from "lucide-react";
+import { Calendar, Volume2, Scan, AlertCircle, Loader2, Bell } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import SOSModal from "./screens/SOSModal";
+import MedicationAlertScreen from "./screens/MedicationAlertScreen";
 import { getTodaySchedule, markAsTaken, type Reminder } from "./services/medicationService";
+import { unlockAudio, announceMedication } from "./utils/voiceAssistant";
 
 interface Props {
   user: any;
-  onShowAlert: () => void;
   onLogout: () => void;
 }
 
-export default function HomeScreen({ user, onShowAlert }: Props) {
+export default function HomeScreen({ user, onLogout }: Props) {
   const userName = user?.user_metadata?.full_name || "Ông/Bà";
   const patientId = user?.id;
 
@@ -21,10 +22,9 @@ export default function HomeScreen({ user, onShowAlert }: Props) {
   const [loading, setLoading] = useState(true);
   const [takingId, setTakingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentDate(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  // Alarm and audio state
+  const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
+  const [alertMed, setAlertMed] = useState<Reminder | null>(null);
 
   useEffect(() => {
     if (patientId) {
@@ -44,12 +44,39 @@ export default function HomeScreen({ user, onShowAlert }: Props) {
     }
   };
 
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date();
+      setCurrentDate(now);
+
+      // Check alarms only if audio is unlocked
+      if (isAudioUnlocked && schedule.length > 0 && !alertMed) {
+        const nextPending = schedule.find(r => r.status === 'pending');
+        if (nextPending) {
+          const scheduledTime = new Date(nextPending.scheduled_time);
+          if (
+            now.getHours() === scheduledTime.getHours() &&
+            now.getMinutes() === scheduledTime.getMinutes() &&
+            now.getSeconds() === 0 // Trigger precisely on the minute
+          ) {
+            setAlertMed(nextPending);
+            announceMedication(
+              nextPending.medication?.name || "Thuốc",
+              nextPending.medication?.dosage || "1 liều"
+            );
+          }
+        }
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [schedule, isAudioUnlocked, alertMed]);
+
   const handleTakeMedication = async (reminderId: string) => {
     try {
       setTakingId(reminderId);
       await markAsTaken(reminderId);
-      await loadSchedule(); // Refresh list after taking
-      onShowAlert(); // Trigger the success alert modal from parent if needed
+      await loadSchedule();
+      setAlertMed(null);
     } catch (error) {
       console.error("Failed to mark as taken:", error);
       alert("Có lỗi xảy ra, vui lòng thử lại!");
@@ -64,7 +91,6 @@ export default function HomeScreen({ user, onShowAlert }: Props) {
   const timeString = `${String(currentDate.getHours()).padStart(2, '0')}:${String(currentDate.getMinutes()).padStart(2, '0')}:${String(currentDate.getSeconds()).padStart(2, '0')}`;
   const lunarString = `(Ngày ${String(lunar.getDay()).padStart(2, '0')} tháng ${String(lunar.getMonth()).padStart(2, '0')} Âm lịch)`;
 
-  // Find the next pending medication
   const nextReminder = schedule.find(r => r.status === 'pending');
 
   return (
@@ -74,8 +100,34 @@ export default function HomeScreen({ user, onShowAlert }: Props) {
         onClose={() => setIsSOSOpen(false)} 
         contactName="Người thân" 
       />
+
+      {alertMed && (
+        <MedicationAlertScreen
+          medicine={{
+            name: alertMed.medication?.name || "Thuốc",
+            dosage: alertMed.medication?.dosage || "1 liều",
+            instruction: alertMed.medication?.instructions || "Theo chỉ dẫn",
+            time: new Date(alertMed.scheduled_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+          }}
+          onTaken={() => handleTakeMedication(alertMed.id)}
+          onSnooze={() => setAlertMed(null)}
+        />
+      )}
       
       <div className="p-5 flex flex-col gap-4">
+        {/* Audio unlock button - Lách luật Autoplay */}
+        {!isAudioUnlocked && (
+          <button 
+            onClick={() => {
+              unlockAudio();
+              setIsAudioUnlocked(true);
+            }}
+            className="w-full bg-[#EBF1FF] border-2 border-primary text-primary py-3 rounded-2xl font-bold text-sm shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2 animate-bounce"
+          >
+            <Bell size={18} className="fill-primary" /> Bật chuông nhắc nhở hôm nay
+          </button>
+        )}
+
         {/* Header */}
         <div className="flex items-center gap-2 mt-2">
           <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 border-2 border-white shadow-sm shrink-0">
@@ -99,7 +151,14 @@ export default function HomeScreen({ user, onShowAlert }: Props) {
               <p className="text-gray-500 text-sm mt-0.5">{lunarString}</p>
             </div>
           </div>
-          <button className="w-12 h-12 rounded-full bg-[#EBF1FF] flex items-center justify-center shrink-0 active:scale-95 transition-all">
+          <button 
+            onClick={() => {
+              if (nextReminder) {
+                announceMedication(nextReminder.medication?.name || "Thuốc", nextReminder.medication?.dosage || "");
+              }
+            }}
+            className="w-12 h-12 rounded-full bg-[#EBF1FF] flex items-center justify-center shrink-0 active:scale-95 transition-all"
+          >
             <Volume2 size={24} className="text-primary" strokeWidth={2.5} />
           </button>
         </div>
@@ -159,7 +218,7 @@ export default function HomeScreen({ user, onShowAlert }: Props) {
                   <span className="text-4xl">🎉</span>
                 </div>
                 <h3 className="text-xl font-bold text-[#1a2b4b] text-center mb-1">Tuyệt vời!</h3>
-                <p className="text-gray-500 text-center">Bạn đã uống xong tất cả các cữ thuốc hôm nay.</p>
+                <p className="text-gray-500 text-center">Bà/Ông đã uống xong tất cả các cữ thuốc hôm nay.</p>
               </div>
             )}
           </div>

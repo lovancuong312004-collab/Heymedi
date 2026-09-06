@@ -5,7 +5,6 @@ import HomeScreen from "./HomeScreen";
 import MedsScreen from "./MedsScreen";
 import FamilyScreen from "./FamilyScreen";
 import SettingsScreen from "./SettingsScreen";
-import MedicationAlertScreen from "./screens/MedicationAlertScreen";
 
 interface Props {
   user: any;
@@ -16,23 +15,13 @@ type ElderlyTab = "home" | "meds" | "family" | "settings";
 
 export default function ElderlyApp({ user, onLogout }: Props) {
   const [activeTab, setActiveTab] = useState<ElderlyTab>("home");
-  const [showAlert, setShowAlert] = useState(false);
 
   return (
     <div className="w-full flex flex-col min-h-screen relative bg-[#F4F7FB]">
-      {/* Medication Alert Overlay */}
-      {showAlert && (
-        <MedicationAlertScreen
-          medicine={{ name: "Amlodipine 5mg", dosage: "1 viên", instruction: "Uống sau ăn sáng", time: "08:00" }}
-          onTaken={() => setShowAlert(false)}
-          onSnooze={() => setShowAlert(false)}
-        />
-      )}
-
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto pb-24 min-h-0">
-        {activeTab === "home" && <HomeScreen user={user} onShowAlert={() => setShowAlert(true)} onLogout={onLogout} />}
-        {activeTab === "meds" && <MedsScreen />}
+        {activeTab === "home" && <HomeScreen user={user} onLogout={onLogout} />}
+        {activeTab === "meds" && <MedsScreen user={user} />}
         {activeTab === "family" && <FamilyScreen user={user} />}
         {activeTab === "settings" && <SettingsScreen user={user} onLogout={onLogout} />}
       </div>
