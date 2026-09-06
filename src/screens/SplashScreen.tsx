@@ -64,45 +64,57 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-white animate-fade-in relative overflow-hidden">
+      
+      {/* Video preload ngầm để khi sang Login không bị giật */}
+      <video 
+        src="/Video%20Project%201.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="hidden" 
+      />
+
+      {/* Tràn ảnh Full Màn Hình */}
+      <div className="absolute inset-0 z-0">
+        <img 
+          src={slides[currentSlide].image} 
+          alt={slides[currentSlide].title} 
+          className="w-full h-full object-cover"
+        />
+      </div>
+
+      {/* Lớp mờ (Gradient) bên dưới để chữ và nút hiển thị rõ ràng trên ảnh */}
+      <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-white via-white/80 to-transparent z-0" />
+
       {/* Nút Skip */}
       <button 
         onClick={onDone}
-        className="absolute top-12 right-6 z-20 text-gray-400 font-bold text-[15px] active:scale-95 transition-all bg-gray-100/50 px-4 py-1.5 rounded-full"
+        className="absolute top-12 right-6 z-20 text-gray-500 font-bold text-[15px] active:scale-95 transition-all bg-white/80 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm"
       >
         Bỏ qua
       </button>
 
-      {/* Decorative background circle */}
-      <div className="absolute -top-[20%] -right-[20%] w-[350px] h-[350px] rounded-full bg-primary/5 blur-3xl" />
-      <div className="absolute top-[40%] -left-[20%] w-[250px] h-[250px] rounded-full bg-emerald-500/5 blur-3xl" />
-
-      {/* Slide Content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-8 text-center relative z-10 pt-10">
-        <div className="flex flex-col items-center justify-center animate-slide-up w-full">
-          <div className="w-full h-[280px] mb-8 relative flex items-center justify-center">
-            <img 
-              src={slides[currentSlide].image} 
-              alt={slides[currentSlide].title} 
-              className="w-full h-full object-contain drop-shadow-xl"
-            />
-          </div>
-          <h2 className="text-[28px] font-black text-[#1A2B4B] mb-3 leading-tight">
+      {/* Slide Content (Nằm đè lên trên ảnh ở nửa dưới) */}
+      <div className="flex-1 flex flex-col justify-end px-8 text-center relative z-10 pb-6">
+        <div className="animate-slide-up w-full">
+          <h2 className="text-[28px] font-black text-[#1A2B4B] mb-3 leading-tight drop-shadow-sm">
             {slides[currentSlide].title}
           </h2>
-          <p className="text-gray-500 text-[15px] font-medium leading-relaxed max-w-[280px]">
+          <p className="text-gray-600 text-[15px] font-medium leading-relaxed max-w-[280px] mx-auto drop-shadow-sm">
             {slides[currentSlide].desc}
           </p>
         </div>
       </div>
 
       {/* Bottom Controls */}
-      <div className="pb-12 px-8 flex flex-col items-center relative z-10">
+      <div className="pb-10 px-8 flex flex-col items-center relative z-10">
         {/* Pagination Dots */}
-        <div className="flex items-center gap-2 mb-10">
+        <div className="flex items-center gap-2 mb-8">
           {slides.map((_, idx) => (
             <div 
               key={idx}
-              className={`h-2 rounded-full transition-all duration-300 ${currentSlide === idx ? 'w-8 bg-primary' : 'w-2 bg-gray-200'}`}
+              className={`h-2 rounded-full transition-all duration-300 shadow-sm ${currentSlide === idx ? 'w-8 bg-primary' : 'w-2 bg-gray-300'}`}
             />
           ))}
         </div>
