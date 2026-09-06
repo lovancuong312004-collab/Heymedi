@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { ArrowRight } from "lucide-react";
 
 export default function SplashScreen({ onDone }: { onDone: () => void }) {
   const [showSplash, setShowSplash] = useState(true);
@@ -63,7 +62,7 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-white animate-fade-in relative overflow-hidden">
+    <div className="flex-1 flex flex-col min-h-screen bg-black animate-fade-in relative overflow-hidden">
       
       {/* Video preload ngầm để khi sang Login không bị giật */}
       <video 
@@ -79,55 +78,40 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
       <div className="absolute inset-0 z-0">
         <img 
           src={slides[currentSlide].image} 
-          alt={slides[currentSlide].title} 
+          alt="Onboarding" 
           className="w-full h-full object-cover"
         />
       </div>
 
-      {/* Lớp mờ (Gradient) bên dưới để chữ và nút hiển thị rõ ràng trên ảnh */}
-      <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-white via-white/80 to-transparent z-0" />
-
-      {/* Nút Skip */}
+      {/* Hotspots để click (Vùng bấm vô hình) */}
+      
+      {/* Vùng bấm "Bỏ qua" ở góc trên cùng bên phải */}
       <button 
         onClick={onDone}
-        className="absolute top-12 right-6 z-20 text-gray-500 font-bold text-[15px] active:scale-95 transition-all bg-white/80 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm"
-      >
-        Bỏ qua
-      </button>
+        className="absolute top-8 right-4 w-28 h-16 z-20 bg-transparent"
+        aria-label="Bỏ qua"
+      />
 
-      {/* Slide Content (Nằm đè lên trên ảnh ở nửa dưới) */}
-      <div className="flex-1 flex flex-col justify-end px-8 text-center relative z-10 pb-6">
-        <div className="animate-slide-up w-full">
-          <h2 className="text-[28px] font-black text-[#1A2B4B] mb-3 leading-tight drop-shadow-sm">
-            {slides[currentSlide].title}
-          </h2>
-          <p className="text-gray-600 text-[15px] font-medium leading-relaxed max-w-[280px] mx-auto drop-shadow-sm">
-            {slides[currentSlide].desc}
-          </p>
-        </div>
-      </div>
+      {/* Vùng bấm quay lại (1/3 màn hình bên trái) */}
+      <button 
+        onClick={() => setCurrentSlide(prev => Math.max(0, prev - 1))}
+        className="absolute top-24 left-0 w-1/3 bottom-32 z-10 bg-transparent"
+        aria-label="Quay lại"
+      />
 
-      {/* Bottom Controls */}
-      <div className="pb-10 px-8 flex flex-col items-center relative z-10">
-        {/* Pagination Dots */}
-        <div className="flex items-center gap-2 mb-8">
-          {slides.map((_, idx) => (
-            <div 
-              key={idx}
-              className={`h-2 rounded-full transition-all duration-300 shadow-sm ${currentSlide === idx ? 'w-8 bg-primary' : 'w-2 bg-gray-300'}`}
-            />
-          ))}
-        </div>
+      {/* Vùng bấm tiếp theo (2/3 màn hình bên phải) */}
+      <button 
+        onClick={handleNext}
+        className="absolute top-24 right-0 w-2/3 bottom-32 z-10 bg-transparent"
+        aria-label="Tiếp theo"
+      />
 
-        {/* Next/Start Button */}
-        <button
-          onClick={handleNext}
-          className="w-full bg-primary text-white py-[18px] rounded-2xl font-bold text-[17px] shadow-lg shadow-primary/30 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
-        >
-          {currentSlide === slides.length - 1 ? 'Bắt đầu sử dụng' : 'Tiếp tục'}
-          {currentSlide !== slides.length - 1 && <ArrowRight size={20} />}
-        </button>
-      </div>
+      {/* Vùng bấm nút to ở dưới cùng (Tiếp tục / Bắt đầu) */}
+      <button 
+        onClick={handleNext}
+        className="absolute bottom-8 left-1/2 -translate-x-1/2 w-[85%] h-20 z-20 bg-transparent"
+        aria-label="Tiếp tục"
+      />
     </div>
   );
 }
