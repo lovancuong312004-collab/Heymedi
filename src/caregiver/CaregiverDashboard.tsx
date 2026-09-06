@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { Calendar, Phone, Plus, Scan, CheckCircle2, Clock, AlertCircle, ChevronRight, Sparkles, Loader2, Hand } from "lucide-react";
 import { Lunar } from "lunar-javascript";
-import ScanLinkModal from "../screens/ScanLinkModal";
 import { getTodaySchedule, getOverdueReminders, markAsTaken, type Reminder } from "../services/medicationService";
-import { supabase } from "../lib/supabase";
+import { useFamily } from "../contexts/FamilyContext";
 
 interface Props {
   user: any;
@@ -22,10 +21,7 @@ export default function CaregiverDashboard({
 }: Props) {
   const caregiverName = user?.user_metadata?.full_name || "Caregiver";
   
-  const [patientId, setPatientId] = useState<string | null>(null);
-  const [patientName, setPatientName] = useState("");
-  const [isLinked, setIsLinked] = useState(false);
-  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const { linkedPatientId: patientId, patientName, isLoading: isCheckingLink } = useFamily();
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [schedule, setSchedule] = useState<Reminder[]>([]);
@@ -38,37 +34,9 @@ export default function CaregiverDashboard({
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch the patient ID from family_links
-  useEffect(() => {
-    const fetchLinkedPatient = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('family_links')
-          .select('elderly_id, elderly_name')
-          .eq('caregiver_id', user?.id)
-          .limit(1)
-          .single();
-          
-        if (data && data.elderly_id) {
-          setPatientId(data.elderly_id);
-          setPatientName(data.elderly_name || "Người bệnh");
-          setIsLinked(true);
-        } else {
-          setIsLinked(false);
-        }
-      } catch (e) {
-        console.error("Failed to fetch linked patient:", e);
-        setIsLinked(false);
-      }
-    };
-    
-    if (user?.id) fetchLinkedPatient();
-  }, [user?.id]);
-
   useEffect(() => {
     if (patientId) {
       loadData();
-      
       const interval = setInterval(loadData, 30000);
       return () => clearInterval(interval);
     }
@@ -103,32 +71,30 @@ export default function CaregiverDashboard({
     }
   };
 
-  if (!isLinked) {
+  if (isCheckingLink) {
+    return (
+      <div className="p-5 flex flex-col items-center justify-center h-full min-h-[70vh]">
+        <Loader2 size={40} className="text-primary animate-spin mb-4" />
+        <p className="text-gray-500 font-medium animate-pulse">Đang kiểm tra dữ liệu gia đình...</p>
+      </div>
+    );
+  }
+
+  if (!patientId) {
     return (
       <div className="p-5 flex flex-col items-center justify-center h-full animate-fade-in bg-white m-4 rounded-3xl shadow-sm border border-gray-100 text-center min-h-[70vh]">
-        <ScanLinkModal 
-          isOpen={isLinkModalOpen}
-          onClose={() => setIsLinkModalOpen(false)}
-          user={user}
-          onLinkSuccess={(name) => {
-            setPatientName(name);
-            setIsLinked(true);
-            // Need to reload to get new patient id, but simple refresh is fine
-            window.location.reload();
-          }}
-        />
         <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mb-6 text-primary border-4 border-white shadow-sm">
           <Scan size={40} />
         </div>
-        <h2 className="text-[#1a2b4b] font-bold text-2xl mb-2">Chưa có liên kết</h2>
+        <h2 className="text-[#1a2b4b] font-bold text-2xl mb-2">Chưa kết nối</h2>
         <p className="text-gray-500 text-sm mb-8 px-4 leading-relaxed">
-          Bạn cần liên kết với tài khoản của người bệnh để có thể theo dõi lịch uống thuốc và gửi nhắc nhở.
+          Bạn chưa liên kết với người bệnh nào. Vui lòng chuyển sang mục "Gia đình" ở thanh điều hướng để bắt đầu kết nối.
         </p>
         <button 
-          onClick={() => setIsLinkModalOpen(true)}
+          onClick={() => onNavigateTab("family")}
           className="w-full max-w-[250px] bg-primary text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-primary/25 active:scale-95 transition-all flex items-center justify-center gap-2"
         >
-          <Plus size={20} /> LIÊN KẾT NGAY
+          ĐẾN TRANG GIA ĐÌNH
         </button>
       </div>
     );

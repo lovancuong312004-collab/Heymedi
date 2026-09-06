@@ -4,7 +4,8 @@ import {
   Pill, 
   Bell, 
   BarChart3, 
-  Settings
+  Settings,
+  Users
 } from "lucide-react";
 import { cn } from "./lib/utils";
 
@@ -13,18 +14,28 @@ import CaregiverMedsScreen from "./caregiver/CaregiverMedsScreen";
 import NotificationsScreen from "./caregiver/NotificationsScreen";
 import AIReportScreen from "./caregiver/AIReportScreen";
 import CaregiverSettings from "./caregiver/CaregiverSettings";
+import CaregiverFamilyScreen from "./caregiver/CaregiverFamilyScreen";
 import CallModal from "./caregiver/CallModal";
 import ScanAIModal from "./caregiver/ScanAIModal";
 import AddMedModal from "./caregiver/AddMedModal";
+import { FamilyProvider } from "./contexts/FamilyContext";
 
 interface Props {
   user: any;
   onLogout: () => void;
 }
 
-type CaregiverTab = "dashboard" | "meds" | "notifications" | "reports" | "settings";
+type CaregiverTab = "dashboard" | "meds" | "family" | "notifications" | "reports" | "settings";
 
 export default function CaregiverApp({ user, onLogout }: Props) {
+  return (
+    <FamilyProvider userId={user?.id}>
+      <CaregiverAppContent user={user} onLogout={onLogout} />
+    </FamilyProvider>
+  );
+}
+
+function CaregiverAppContent({ user, onLogout }: Props) {
   const [activeTab, setActiveTab] = useState<CaregiverTab>("dashboard");
   const [isCallOpen, setIsCallOpen] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
@@ -37,16 +48,16 @@ export default function CaregiverApp({ user, onLogout }: Props) {
       <CallModal
         isOpen={isCallOpen}
         onClose={() => setIsCallOpen(false)}
-        patientName="Ông Minh"
+        patientName="Người bệnh"
         patientPhone="0901 234 567"
-        reminderNote="Nhắc uống thuốc Metformin 500mg (cữ trưa 12:00 đang quá giờ!)"
+        reminderNote="Gọi nhắc uống thuốc"
       />
 
       <ScanAIModal
         isOpen={isScanOpen}
         onClose={() => setIsScanOpen(false)}
         onAddMedSuccess={(newMed) => {
-          alert(`Đã thêm thành công thuốc "${newMed.name}" vào lịch uống thuốc của Ông Minh!`);
+          alert(`Đã thêm thành công thuốc "${newMed.name}" vào lịch uống thuốc!`);
           setActiveTab("meds");
         }}
       />
@@ -55,7 +66,7 @@ export default function CaregiverApp({ user, onLogout }: Props) {
         isOpen={isAddMedOpen}
         onClose={() => setIsAddMedOpen(false)}
         onAdd={(newMed) => {
-          alert(`Đã lưu thành công thuốc "${newMed.name}" vào đơn thuốc của Ông Minh!`);
+          alert(`Đã lưu thành công thuốc "${newMed.name}" vào đơn thuốc!`);
           setActiveTab("meds");
         }}
       />
@@ -78,6 +89,7 @@ export default function CaregiverApp({ user, onLogout }: Props) {
             onOpenAddMed={() => setIsAddMedOpen(true)}
           />
         )}
+        {activeTab === "family" && <CaregiverFamilyScreen user={user} />}
         {activeTab === "notifications" && (
           <NotificationsScreen
             onOpenCall={() => setIsCallOpen(true)}
@@ -87,7 +99,7 @@ export default function CaregiverApp({ user, onLogout }: Props) {
         {activeTab === "settings" && <CaregiverSettings user={user} onLogout={onLogout} />}
       </div>
 
-      {/* Bottom Navigation - Matches ElderlyApp prototype styling */}
+      {/* Bottom Navigation */}
       <div className="absolute bottom-0 w-full bg-white/95 backdrop-blur-sm border-t border-gray-100 px-1 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
         <CaregiverNavItem
           icon={<Home size={22} />}
@@ -102,6 +114,12 @@ export default function CaregiverApp({ user, onLogout }: Props) {
           onClick={() => setActiveTab("meds")}
         />
         <CaregiverNavItem
+          icon={<Users size={22} />}
+          label="Gia đình"
+          isActive={activeTab === "family"}
+          onClick={() => setActiveTab("family")}
+        />
+        <CaregiverNavItem
           icon={<Bell size={22} />}
           label="Thông báo"
           isActive={activeTab === "notifications"}
@@ -110,7 +128,7 @@ export default function CaregiverApp({ user, onLogout }: Props) {
         />
         <CaregiverNavItem
           icon={<BarChart3 size={22} />}
-          label="Báo cáo AI"
+          label="Báo cáo"
           isActive={activeTab === "reports"}
           onClick={() => setActiveTab("reports")}
         />
