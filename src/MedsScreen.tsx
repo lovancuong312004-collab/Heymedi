@@ -63,7 +63,7 @@ export default function MedsScreen({ user }: Props) {
   const dateString = `${dayOfWeek}, ${String(currentDate.getDate()).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
   const lunarString = `(${String(lunar.getDay()).padStart(2, '0')}/${String(lunar.getMonth()).padStart(2, '0')} Âm lịch)`;
 
-  const filteredMeds = schedule.filter(med => {
+  const filteredMeds = (schedule || []).filter(med => {
     if (activeTab === "Tất cả") return true;
     const hour = new Date(med.scheduled_time).getHours();
     let period = "Sáng";
@@ -76,7 +76,7 @@ export default function MedsScreen({ user }: Props) {
 
   return (
     <>
-      <AddMedModal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} onAdd={() => {
+      <AddMedModal isOpen={isAddOpen} patientId={user?.id} onClose={() => setIsAddOpen(false)} onAdd={() => {
         setIsAddOpen(false);
         loadSchedule();
       }} />

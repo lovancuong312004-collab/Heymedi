@@ -92,7 +92,7 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
               </div>
               <div>
                 <p className="text-gray-500 text-xs font-medium uppercase tracking-wider mb-0.5">Đang theo dõi sức khỏe cho</p>
-                <h2 className="text-[#1a2b4b] font-black text-xl">{patientName}</h2>
+                <h2 className="text-[#1a2b4b] font-black text-xl">{patientInfo?.name || 'Đang tải...'}</h2>
                 {patientInfo?.email && <p className="text-gray-400 text-xs mt-0.5">{patientInfo.email}</p>}
               </div>
             </div>

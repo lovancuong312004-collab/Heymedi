@@ -60,7 +60,7 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
           {linkedPatientId ? (
             <p className="text-xs text-success font-bold mt-0.5 flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-success inline-block" />
-              Đang quản lý: {patientName}
+              Đang quản lý: {patientInfo?.name || 'Chưa kết nối'}
             </p>
           ) : (
             <p className="text-xs text-gray-500 font-bold mt-0.5 flex items-center gap-1">
@@ -79,10 +79,10 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
             {/* Patient Profile */}
             <SettingRow
               icon={<Shield size={20} />}
-              label={`Hồ sơ bệnh án của ${patientName}`}
+              label={`Hồ sơ bệnh án của ${patientInfo?.name || 'người thân'}`}
               value="Xem chi tiết"
               hasBorder
-              onClick={() => alert(`Hồ sơ bệnh án của ${patientName} đang được cập nhật.`)}
+              onClick={() => alert(`Hồ sơ bệnh án của ${patientInfo?.name || 'người thân'} đang được cập nhật.`)}
             />
 
             {/* Co-caregivers */}
@@ -91,7 +91,7 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
               label="Người cùng chăm sóc"
               value="Thêm"
               hasBorder
-              onClick={() => alert(`Mời thêm thành viên trong gia đình cùng theo dõi lịch uống thuốc của ${patientName}`)}
+              onClick={() => alert(`Mời thêm thành viên trong gia đình cùng theo dõi lịch uống thuốc của ${patientInfo?.name || 'người thân'}`)}
             />
 
             {/* Toggle 1: Overdue alerts */}

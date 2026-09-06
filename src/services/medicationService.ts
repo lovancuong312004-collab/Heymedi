@@ -23,49 +23,63 @@ export interface Reminder {
  * Fetch all reminders for a specific patient for today.
  */
 export async function getTodaySchedule(patientId: string): Promise<Reminder[]> {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date();
-  endOfDay.setHours(23, 59, 59, 999);
+  if (!patientId) return [];
+  try {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
 
-  const { data, error } = await supabase
-    .from('reminders')
-    .select(`
-      *,
-      medication:medications (*)
-    `)
-    .eq('patient_id', patientId)
-    .gte('scheduled_time', startOfDay.toISOString())
-    .lte('scheduled_time', endOfDay.toISOString())
-    .order('scheduled_time', { ascending: true });
+    const { data, error } = await supabase
+      .from('reminders')
+      .select(`
+        *,
+        medication:medications (*)
+      `)
+      .eq('patient_id', patientId)
+      .gte('scheduled_time', startOfDay.toISOString())
+      .lte('scheduled_time', endOfDay.toISOString())
+      .order('scheduled_time', { ascending: true });
 
-  if (error) {
-    console.error('Error fetching today schedule:', error);
-    throw error;
+    if (error) {
+      console.error('Error fetching today schedule:', error);
+      return [];
+    }
+
+    if (!data || !Array.isArray(data)) return [];
+
+    // Handle Supabase joining giving an array or object for medication
+    return data.map(r => ({
+      ...r,
+      medication: Array.isArray(r.medication) ? r.medication[0] : r.medication
+    })) as Reminder[];
+  } catch (err) {
+    console.error('getTodaySchedule unexpected error:', err);
+    return [];
   }
-
-  // Handle Supabase joining giving an array or object for medication
-  return (data as any[]).map(r => ({
-    ...r,
-    medication: Array.isArray(r.medication) ? r.medication[0] : r.medication
-  })) as Reminder[];
 }
 
 /**
  * Mark a reminder as taken.
  */
 export async function markAsTaken(reminderId: string): Promise<void> {
-  const { error } = await supabase
-    .from('reminders')
-    .update({ 
-      status: 'taken',
-      taken_at: new Date().toISOString()
-    })
-    .eq('id', reminderId);
+  if (!reminderId) return;
+  try {
+    const { error } = await supabase
+      .from('reminders')
+      .update({ 
+        status: 'taken',
+        taken_at: new Date().toISOString()
+      })
+      .eq('id', reminderId);
 
-  if (error) {
-    console.error('Error marking reminder as taken:', error);
-    throw error;
+    if (error) {
+      console.error('Error marking reminder as taken:', error);
+      throw error;
+    }
+  } catch (err) {
+    console.error('markAsTaken unexpected error:', err);
+    throw err;
   }
 }
 
@@ -73,68 +87,78 @@ export async function markAsTaken(reminderId: string): Promise<void> {
  * Get overdue reminders (more than 30 mins late and still pending).
  */
 export async function getOverdueReminders(patientId: string): Promise<Reminder[]> {
-  const thirtyMinsAgo = new Date(Date.now() - 30 * 60000);
-  
-  // We only want reminders from today that are overdue
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  if (!patientId) return [];
+  try {
+    const thirtyMinsAgo = new Date(Date.now() - 30 * 60000);
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
 
-  const { data, error } = await supabase
-    .from('reminders')
-    .select(`
-      *,
-      medication:medications (*)
-    `)
-    .eq('patient_id', patientId)
-    .eq('status', 'pending')
-    .gte('scheduled_time', startOfDay.toISOString())
-    .lt('scheduled_time', thirtyMinsAgo.toISOString())
-    .order('scheduled_time', { ascending: true });
+    const { data, error } = await supabase
+      .from('reminders')
+      .select(`
+        *,
+        medication:medications (*)
+      `)
+      .eq('patient_id', patientId)
+      .eq('status', 'pending')
+      .gte('scheduled_time', startOfDay.toISOString())
+      .lte('scheduled_time', thirtyMinsAgo.toISOString())
+      .order('scheduled_time', { ascending: true });
 
-  if (error) {
-    console.error('Error fetching overdue reminders:', error);
-    throw error;
+    if (error) {
+      console.error('Error fetching overdue reminders:', error);
+      return [];
+    }
+
+    if (!data || !Array.isArray(data)) return [];
+
+    return data.map(r => ({
+      ...r,
+      medication: Array.isArray(r.medication) ? r.medication[0] : r.medication
+    })) as Reminder[];
+  } catch (err) {
+    console.error('getOverdueReminders unexpected error:', err);
+    return [];
   }
-
-  return (data as any[]).map(r => ({
-    ...r,
-    medication: Array.isArray(r.medication) ? r.medication[0] : r.medication
-  })) as Reminder[];
 }
 
 /**
- * Add a new medication and create a reminder for today
+ * Add a medication and its reminder for a patient.
  */
 export async function addMedicationAndReminder(
-  patientId: string, 
-  medName: string, 
-  dosage: string, 
-  instructions: string, 
-  time: string,
-  imageUrl: string | null = null
+  patientId: string,
+  name: string,
+  dosage: string,
+  instructions: string,
+  timeOfDay: string,
+  imageUrl?: string | null
 ): Promise<void> {
-  
-  // 1. Insert into medications
+  if (!patientId) throw new Error("patientId is required");
+
+  // 1. Insert Medication
   const { data: medData, error: medError } = await supabase
     .from('medications')
     .insert({
       patient_id: patientId,
-      name: medName,
+      name,
       dosage,
       instructions,
-      image_url: imageUrl
+      image_url: imageUrl || null
     })
     .select()
     .single();
 
-  if (medError) throw medError;
+  if (medError) {
+    console.error("Error inserting medication:", medError);
+    throw medError;
+  }
 
-  // 2. Create reminder for today
-  const [hours, minutes] = time.split(':').map(Number);
+  // 2. Insert Reminder
+  const [hours, minutes] = timeOfDay.split(':').map(Number);
   const scheduledTime = new Date();
   scheduledTime.setHours(hours, minutes, 0, 0);
 
-  const { error: remError } = await supabase
+  const { error: reminderError } = await supabase
     .from('reminders')
     .insert({
       medication_id: medData.id,
@@ -143,5 +167,8 @@ export async function addMedicationAndReminder(
       status: 'pending'
     });
 
-  if (remError) throw remError;
+  if (reminderError) {
+    console.error("Error inserting reminder:", reminderError);
+    throw reminderError;
+  }
 }

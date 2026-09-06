@@ -5,6 +5,7 @@ import RegisterScreen from "./screens/RegisterScreen";
 import ElderlyApp from "./ElderlyApp";
 import CaregiverApp from "./CaregiverApp";
 import { supabase } from "./lib/supabase";
+import { FamilyProvider } from "./contexts/FamilyContext";
 
 export type AppRoute = "splash" | "login" | "register" | "elderly" | "caregiver";
 
@@ -40,14 +41,16 @@ export default function App() {
   const navigate = (r: AppRoute) => setRoute(r);
 
   return (
-    <div className="flex justify-center bg-gray-300 min-h-screen">
-      <div className="w-full max-w-md bg-[#F4F7FB] min-h-screen relative flex flex-col font-sans overflow-hidden shadow-2xl">
-        {route === "splash"    && <SplashScreen   onDone={() => navigate("login")} />}
-        {route === "login"     && <LoginScreen    onLogin={(role) => navigate(role === "elderly" ? "elderly" : "caregiver")} onRegister={() => navigate("register")} />}
-        {route === "register"  && <RegisterScreen onDone={(role) => navigate(role === "elderly" ? "elderly" : "caregiver")} onBack={() => navigate("login")} />}
-        {route === "elderly"   && <ElderlyApp     user={user} onLogout={async () => { await supabase.auth.signOut(); navigate("login"); }} />}
-        {route === "caregiver" && <CaregiverApp   user={user} onLogout={async () => { await supabase.auth.signOut(); navigate("login"); }} />}
+    <FamilyProvider>
+      <div className="flex justify-center bg-gray-300 min-h-screen">
+        <div className="w-full max-w-md bg-[#F4F7FB] min-h-screen relative flex flex-col font-sans overflow-hidden shadow-2xl">
+          {route === "splash"    && <SplashScreen   onDone={() => navigate("login")} />}
+          {route === "login"     && <LoginScreen    onLogin={(role) => navigate(role === "elderly" ? "elderly" : "caregiver")} onRegister={() => navigate("register")} />}
+          {route === "register"  && <RegisterScreen onDone={(role) => navigate(role === "elderly" ? "elderly" : "caregiver")} onBack={() => navigate("login")} />}
+          {route === "elderly"   && <ElderlyApp     user={user} onLogout={async () => { await supabase.auth.signOut(); navigate("login"); }} />}
+          {route === "caregiver" && <CaregiverApp   user={user} onLogout={async () => { await supabase.auth.signOut(); navigate("login"); }} />}
+        </div>
       </div>
-    </div>
+    </FamilyProvider>
   );
 }

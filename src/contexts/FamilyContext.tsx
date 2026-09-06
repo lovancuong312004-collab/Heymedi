@@ -163,7 +163,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
 export function useFamily() {
   const context = useContext(FamilyContext);
   if (context === undefined) {
-    throw new Error("useFamily must be used within a FamilyProvider");
+    return { linkedPatientId: null, patientName: null, patientInfo: null, isLoading: false, refreshLink: async () => {} };
   }
   return context;
 }

@@ -13,7 +13,7 @@ interface Props {
 }
 
 export default function HomeScreen({ user, onLogout: _onLogout }: Props) {
-  const userName = user?.user_metadata?.full_name || "Ông/Bà";
+  const userName = user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "Bác");
   const patientId = user?.id;
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -105,7 +105,7 @@ export default function HomeScreen({ user, onLogout: _onLogout }: Props) {
   const timeString = `${String(currentDate.getHours()).padStart(2, '0')}:${String(currentDate.getMinutes()).padStart(2, '0')}:${String(currentDate.getSeconds()).padStart(2, '0')}`;
   const lunarString = `(Ngày ${String(lunar.getDay()).padStart(2, '0')} tháng ${String(lunar.getMonth()).padStart(2, '0')} Âm lịch)`;
 
-  const nextReminder = schedule.find(r => r.status === 'pending');
+  const nextReminder = (schedule || []).find(r => r?.status === 'pending');
 
   return (
     <>
@@ -144,8 +144,12 @@ export default function HomeScreen({ user, onLogout: _onLogout }: Props) {
 
         {/* Header */}
         <div className="flex items-center gap-2 mt-2">
-          <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 border-2 border-white shadow-sm shrink-0">
-            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face" alt="Avatar" className="w-full h-full object-cover" />
+          <div className="w-10 h-10 rounded-full overflow-hidden bg-blue-100 border-2 border-white shadow-sm shrink-0 flex items-center justify-center text-primary font-bold text-base">
+            {user?.user_metadata?.avatar_url ? (
+              <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              <span>{(userName || "B")[0].toUpperCase()}</span>
+            )}
           </div>
           <div>
             <p className="text-gray-500 text-xs font-medium">Chào buổi sáng,</p>

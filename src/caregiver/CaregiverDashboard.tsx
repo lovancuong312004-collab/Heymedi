@@ -154,7 +154,7 @@ export default function CaregiverDashboard({
               (patientName || "T")[0].toUpperCase()
             )}
           </div>
-          <span className="text-xs font-bold text-[#1a2b4b] max-w-[80px] truncate">{patientName || "Thành viên"}</span>
+          <span className="text-xs font-bold text-[#1a2b4b] max-w-[80px] truncate">{patientInfo?.name || 'người thân'}</span>
         </div>
       </div>
 
@@ -239,39 +239,36 @@ export default function CaregiverDashboard({
 
       {/* 4. Quick Action Row */}
       <div className="flex gap-3">
-        {/* Thêm thuốc thủ công */}
+        {/* Thêm thuốc cho người thân */}
         <div 
           onClick={onOpenAddMed}
-          className="flex-[1] bg-white rounded-2xl p-3 flex flex-col items-center justify-center gap-1.5 border border-gray-100 shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
+          className="flex-[2] bg-white rounded-2xl p-4 flex items-center gap-3.5 border border-gray-100 shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
         >
-          <div className="w-10 h-10 bg-gray-50 rounded-xl text-primary flex items-center justify-center shadow-sm shrink-0">
-            <Plus size={20} strokeWidth={2.5} />
+          <div className="w-12 h-12 bg-primary rounded-xl text-white flex items-center justify-center shadow-sm shrink-0">
+            <Plus size={24} strokeWidth={2.5} />
           </div>
-          <span className="text-[#1a2b4b] font-bold text-[11px] text-center leading-tight">Thêm<br/>thủ công</span>
+          <div className="min-w-0">
+            <h3 className="text-[#1a2b4b] font-bold text-sm leading-tight truncate">
+              Thêm thuốc cho {patientInfo?.name || 'người thân'}
+            </h3>
+            <p className="text-gray-400 text-xs mt-1 leading-tight">Cài đặt giờ nhắc & liều lượng</p>
+          </div>
         </div>
 
-        {/* Quét AI nổi bật */}
+        {/* Quét AI */}
         <div 
           onClick={onOpenScan}
-          className="flex-[2] bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl p-4 flex items-center gap-3 shadow-md shadow-blue-500/25 cursor-pointer active:scale-[0.98] transition-transform relative overflow-hidden"
+          className="flex-[1] bg-[#EBF1FF] rounded-2xl p-3 flex flex-col items-center justify-center gap-1 border border-blue-100 shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
         >
-          <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/10 rounded-full blur-2xl"></div>
-          <div className="w-11 h-11 bg-white/20 rounded-xl text-white flex items-center justify-center shadow-sm shrink-0 backdrop-blur-md border border-white/20 z-10">
-            <Scan size={22} strokeWidth={2.5} />
-          </div>
-          <div className="z-10">
-            <h3 className="text-white font-bold text-[15px] leading-tight">Quét Đơn Thuốc AI</h3>
-            <p className="text-blue-100 text-[11px] mt-1 leading-tight flex items-center gap-1 font-medium">
-              <Sparkles size={12} /> Tự động nhận diện
-            </p>
-          </div>
+          <Scan className="text-primary" size={26} strokeWidth={2.5} />
+          <span className="text-primary font-bold text-xs text-center leading-tight">Quét AI</span>
         </div>
       </div>
 
       {/* 5. Timeline Today */}
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex flex-col gap-4">
         <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-          <h3 className="text-[#1a2b4b] font-bold text-base">Lịch trình hôm nay của {patientName}</h3>
+          <h3 className="text-[#1a2b4b] font-bold text-base">Lịch trình hôm nay của {patientInfo?.name || 'người thân'}</h3>
           <button
             onClick={() => onNavigateTab("meds")}
             className="text-primary text-xs font-bold flex items-center gap-0.5 hover:underline"
