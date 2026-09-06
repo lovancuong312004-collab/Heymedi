@@ -3,6 +3,7 @@ import { Calendar, Phone, Plus, Scan, CheckCircle2, Clock, AlertCircle, ChevronR
 import { Lunar } from "lunar-javascript";
 import { getTodaySchedule, getOverdueReminders, markAsTaken, type Reminder } from "../services/medicationService";
 import { useFamily } from "../contexts/FamilyContext";
+import { supabase } from "../lib/supabase";
 
 interface Props {
   user: any;
@@ -38,8 +39,22 @@ export default function CaregiverDashboard({
   useEffect(() => {
     if (patientId) {
       loadData();
+      
+      const channel = supabase.channel('caregiver-dashboard-channel')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders', filter: `patient_id=eq.${patientId}` }, () => {
+          loadData();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'medications', filter: `patient_id=eq.${patientId}` }, () => {
+          loadData();
+        })
+        .subscribe();
+
       const interval = setInterval(loadData, 30000);
-      return () => clearInterval(interval);
+      
+      return () => {
+        clearInterval(interval);
+        supabase.removeChannel(channel);
+      };
     }
   }, [patientId]);
 
@@ -216,28 +231,33 @@ export default function CaregiverDashboard({
       )}
 
       {/* 4. Quick Action Row */}
-      <div className="flex gap-3 mt-1">
-        {/* Thêm thuốc nhanh (3/4 width) */}
+      <div className="flex gap-3">
+        {/* Thêm thuốc thủ công */}
         <div 
           onClick={onOpenAddMed}
-          className="flex-[3] bg-[#EBF1FF] rounded-2xl p-4 flex items-center gap-3 border border-blue-100 shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
+          className="flex-[1] bg-white rounded-2xl p-3 flex flex-col items-center justify-center gap-1.5 border border-gray-100 shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
         >
-          <div className="w-11 h-11 bg-primary rounded-xl text-white flex items-center justify-center shadow-sm shrink-0">
-            <Plus size={22} strokeWidth={3} />
+          <div className="w-10 h-10 bg-gray-50 rounded-xl text-primary flex items-center justify-center shadow-sm shrink-0">
+            <Plus size={20} strokeWidth={2.5} />
           </div>
-          <div>
-            <h3 className="text-[#1a2b4b] font-bold text-sm leading-tight">Thêm thuốc cho {patientName}</h3>
-            <p className="text-gray-500 text-xs mt-0.5 leading-tight">Cài đặt giờ nhắc & liều lượng</p>
-          </div>
+          <span className="text-[#1a2b4b] font-bold text-[11px] text-center leading-tight">Thêm<br/>thủ công</span>
         </div>
 
-        {/* Quét AI (1/4 width) */}
+        {/* Quét AI nổi bật */}
         <div 
           onClick={onOpenScan}
-          className="flex-[1] bg-[#EBF1FF] rounded-2xl p-2 flex flex-col items-center justify-center border border-blue-100 shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
+          className="flex-[2] bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl p-4 flex items-center gap-3 shadow-md shadow-blue-500/25 cursor-pointer active:scale-[0.98] transition-transform relative overflow-hidden"
         >
-          <Scan className="text-primary mb-1" size={24} />
-          <span className="text-primary font-bold text-[10px] text-center leading-tight">Quét AI</span>
+          <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/10 rounded-full blur-2xl"></div>
+          <div className="w-11 h-11 bg-white/20 rounded-xl text-white flex items-center justify-center shadow-sm shrink-0 backdrop-blur-md border border-white/20 z-10">
+            <Scan size={22} strokeWidth={2.5} />
+          </div>
+          <div className="z-10">
+            <h3 className="text-white font-bold text-[15px] leading-tight">Quét Đơn Thuốc AI</h3>
+            <p className="text-blue-100 text-[11px] mt-1 leading-tight flex items-center gap-1 font-medium">
+              <Sparkles size={12} /> Tự động nhận diện
+            </p>
+          </div>
         </div>
       </div>
 

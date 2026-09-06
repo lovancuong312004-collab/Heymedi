@@ -5,6 +5,7 @@ import { cn } from "./lib/utils";
 import AddMedModal from "./caregiver/AddMedModal";
 import ScanAIModal from "./caregiver/ScanAIModal";
 import { getTodaySchedule, type Reminder } from "./services/medicationService";
+import { supabase } from "./lib/supabase";
 
 interface Props {
   user: any;
@@ -27,6 +28,19 @@ export default function MedsScreen({ user }: Props) {
   useEffect(() => {
     if (user?.id) {
       loadSchedule();
+
+      const channel = supabase.channel('custom-meds-channel')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders', filter: `patient_id=eq.${user.id}` }, () => {
+          loadSchedule();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'medications', filter: `patient_id=eq.${user.id}` }, () => {
+          loadSchedule();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     } else {
       setLoading(false);
     }

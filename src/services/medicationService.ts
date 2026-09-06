@@ -101,3 +101,47 @@ export async function getOverdueReminders(patientId: string): Promise<Reminder[]
     medication: Array.isArray(r.medication) ? r.medication[0] : r.medication
   })) as Reminder[];
 }
+
+/**
+ * Add a new medication and create a reminder for today
+ */
+export async function addMedicationAndReminder(
+  patientId: string, 
+  medName: string, 
+  dosage: string, 
+  instructions: string, 
+  time: string,
+  imageUrl: string | null = null
+): Promise<void> {
+  
+  // 1. Insert into medications
+  const { data: medData, error: medError } = await supabase
+    .from('medications')
+    .insert({
+      patient_id: patientId,
+      name: medName,
+      dosage,
+      instructions,
+      image_url: imageUrl
+    })
+    .select()
+    .single();
+
+  if (medError) throw medError;
+
+  // 2. Create reminder for today
+  const [hours, minutes] = time.split(':').map(Number);
+  const scheduledTime = new Date();
+  scheduledTime.setHours(hours, minutes, 0, 0);
+
+  const { error: remError } = await supabase
+    .from('reminders')
+    .insert({
+      medication_id: medData.id,
+      patient_id: patientId,
+      scheduled_time: scheduledTime.toISOString(),
+      status: 'pending'
+    });
+
+  if (remError) throw remError;
+}

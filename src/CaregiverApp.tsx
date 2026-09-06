@@ -16,7 +16,7 @@ import AIReportScreen from "./caregiver/AIReportScreen";
 import CaregiverSettings from "./caregiver/CaregiverSettings";
 import CaregiverFamilyScreen from "./caregiver/CaregiverFamilyScreen";
 import CallModal from "./caregiver/CallModal";
-import ScanAIModal from "./caregiver/ScanAIModal";
+import ScanPrescriptionModal from "./caregiver/ScanPrescriptionModal";
 import AddMedModal from "./caregiver/AddMedModal";
 import { FamilyProvider } from "./contexts/FamilyContext";
 
@@ -53,11 +53,10 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         reminderNote="Gọi nhắc uống thuốc"
       />
 
-      <ScanAIModal
+      <ScanPrescriptionModal
         isOpen={isScanOpen}
         onClose={() => setIsScanOpen(false)}
-        onAddMedSuccess={(newMed) => {
-          alert(`Đã thêm thành công thuốc "${newMed.name}" vào lịch uống thuốc!`);
+        onSuccess={() => {
           setActiveTab("meds");
         }}
       />
@@ -65,8 +64,8 @@ function CaregiverAppContent({ user, onLogout }: Props) {
       <AddMedModal
         isOpen={isAddMedOpen}
         onClose={() => setIsAddMedOpen(false)}
-        onAdd={(newMed) => {
-          alert(`Đã lưu thành công thuốc "${newMed.name}" vào đơn thuốc!`);
+        onAdd={() => {
+          alert(`Đã lưu thành công thuốc vào đơn thuốc!`);
           setActiveTab("meds");
         }}
       />

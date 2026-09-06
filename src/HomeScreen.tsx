@@ -5,6 +5,7 @@ import SOSModal from "./screens/SOSModal";
 import MedicationAlertScreen from "./screens/MedicationAlertScreen";
 import { getTodaySchedule, markAsTaken, type Reminder } from "./services/medicationService";
 import { unlockAudio, announceMedication } from "./utils/voiceAssistant";
+import { supabase } from "./lib/supabase";
 
 interface Props {
   user: any;
@@ -29,6 +30,19 @@ export default function HomeScreen({ user, onLogout }: Props) {
   useEffect(() => {
     if (patientId) {
       loadSchedule();
+
+      const channel = supabase.channel('custom-all-channel')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders', filter: `patient_id=eq.${patientId}` }, () => {
+          loadSchedule();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'medications', filter: `patient_id=eq.${patientId}` }, () => {
+          loadSchedule();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [patientId]);
 
