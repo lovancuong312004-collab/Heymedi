@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Scan, CheckCircle2, User, Users } from "lucide-react";
+import { Plus, Scan, CheckCircle2, Users } from "lucide-react";
 import ScanLinkModal from "../screens/ScanLinkModal";
 import { useFamily } from "../contexts/FamilyContext";
 import { supabase } from "../lib/supabase";
@@ -9,19 +9,21 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
 
   const handleUnlink = async () => {
-    if (!confirm("Bạn có chắc chắn muốn hủy liên kết với người bệnh này?")) return;
+    if (!confirm("Bạn có chắc chắn muốn hủy liên kết với thành viên này?")) return;
     try {
-      await supabase
+      const { error } = await supabase
         .from('family_links')
         .delete()
         .eq('caregiver_id', user?.id)
         .eq('patient_id', linkedPatientId);
       
+      if (error) throw error;
+      
       alert("Đã hủy liên kết thành công!");
       await refreshLink();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert("Có lỗi xảy ra khi hủy liên kết.");
+      alert("Có lỗi xảy ra khi hủy liên kết: " + (e.message || "Vui lòng thử lại"));
     }
   };
 
@@ -34,7 +36,8 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
     );
   }
 
-  const patientName = patientInfo?.name || "Người bệnh";
+  const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split('@')[0] : "Thành viên");
+  const initial = (patientName || "T")[0].toUpperCase();
 
   return (
     <div className="p-5 flex flex-col h-full min-h-[70vh]">
@@ -60,7 +63,7 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
           </div>
           <h2 className="text-[#1a2b4b] font-bold text-2xl mb-2">Chưa có liên kết</h2>
           <p className="text-gray-500 text-sm mb-8 leading-relaxed">
-            Bạn cần liên kết với tài khoản của người bệnh để có thể theo dõi lịch uống thuốc và nhận thông báo nhắc nhở.
+            Bạn cần liên kết với tài khoản của người thân để có thể theo dõi lịch uống thuốc và nhận thông báo nhắc nhở.
           </p>
           <button 
             onClick={() => setIsLinkModalOpen(true)}
@@ -80,22 +83,23 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
             </div>
 
             <div className="flex items-center gap-4 mb-6">
-              <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-green-100 shadow-sm shrink-0 bg-gray-100 flex items-center justify-center">
+              <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-green-100 shadow-sm shrink-0 bg-blue-50 flex items-center justify-center text-primary font-bold text-2xl">
                 {patientInfo?.avatar_url ? (
                   <img src={patientInfo.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
-                  <User size={30} className="text-gray-400" />
+                  <span>{initial}</span>
                 )}
               </div>
               <div>
                 <p className="text-gray-500 text-xs font-medium uppercase tracking-wider mb-0.5">Đang theo dõi sức khỏe cho</p>
                 <h2 className="text-[#1a2b4b] font-black text-xl">{patientName}</h2>
+                {patientInfo?.email && <p className="text-gray-400 text-xs mt-0.5">{patientInfo.email}</p>}
               </div>
             </div>
 
             <button 
               onClick={handleUnlink}
-              className="w-full py-3 bg-red-50 text-danger rounded-xl font-bold text-sm active:scale-95 transition-all"
+              className="w-full py-3 bg-red-50 text-danger rounded-xl font-bold text-sm active:scale-95 transition-all cursor-pointer hover:bg-red-100"
             >
               Hủy liên kết
             </button>

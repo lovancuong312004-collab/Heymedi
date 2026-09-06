@@ -25,7 +25,7 @@ export default function CaregiverMedsScreen({
   onOpenAddMed
 }: Props) {
   const { patientInfo } = useFamily();
-  const patientName = patientInfo?.name || "Người bệnh";
+  const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Thành viên");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [activeFilter, setActiveFilter] = useState("Tất cả");
 

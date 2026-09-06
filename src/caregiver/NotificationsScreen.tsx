@@ -20,7 +20,7 @@ interface Props {
 
 export default function NotificationsScreen({ onOpenCall }: Props) {
   const { patientInfo } = useFamily();
-  const patientName = patientInfo?.name || "Người bệnh";
+  const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Thành viên");
   const [filter, setFilter] = useState<"all" | "overdue" | "taken" | "system">("all");
 
   const [notifications, setNotifications] = useState([

@@ -37,7 +37,7 @@ export default function CaregiverApp({ user, onLogout }: Props) {
 
 function CaregiverAppContent({ user, onLogout }: Props) {
   const { patientInfo } = useFamily();
-  const patientName = patientInfo?.name || "Người bệnh";
+  const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Thành viên");
   const patientPhone = patientInfo?.phone || "0901 234 567";
 
   const [activeTab, setActiveTab] = useState<CaregiverTab>("dashboard");

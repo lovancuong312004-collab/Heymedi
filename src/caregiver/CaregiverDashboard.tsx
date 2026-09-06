@@ -151,10 +151,10 @@ export default function CaregiverDashboard({
             {patientInfo?.avatar_url ? (
               <img src={patientInfo.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
-              (patientInfo?.name || "N")[0].toUpperCase()
+              (patientName || "T")[0].toUpperCase()
             )}
           </div>
-          <span className="text-xs font-bold text-[#1a2b4b] max-w-[80px] truncate">{patientInfo?.name || "Người bệnh"}</span>
+          <span className="text-xs font-bold text-[#1a2b4b] max-w-[80px] truncate">{patientName || "Thành viên"}</span>
         </div>
       </div>
 

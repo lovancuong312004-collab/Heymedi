@@ -26,7 +26,7 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
   const [aiVoiceCall, setAiVoiceCall] = useState(false);
   const meta = user?.user_metadata || {};
   
-  const patientName = patientInfo?.name || "Người bệnh";
+  const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Thành viên");
 
   return (
     <div className="p-5 flex flex-col min-h-full bg-[#F4F7FB] animate-fade-in">

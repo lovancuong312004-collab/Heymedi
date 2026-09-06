@@ -25,27 +25,62 @@ export default function FamilyScreen({ user }: Props) {
       if (error) throw error;
       
       if (data && data.length > 0) {
-        // We have linked caregivers, let's fetch their profiles
         const caregiverIds = data.map(d => d.caregiver_id);
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('*')
+        
+        // Query user_view for caregivers
+        const { data: caregivers, error: viewError } = await supabase
+          .from('user_view')
+          .select('id, full_name, email, avatar_url')
           .in('id', caregiverIds);
           
-        if (profiles) {
-          const members = profiles.map(p => ({
-            id: p.id,
-            name: p.full_name || "Người chăm sóc",
-            role: "Đang theo dõi bạn",
-            imgSrc: p.avatar_url || "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop&crop=face"
-          }));
+        if (viewError) {
+          console.error("user_view error:", viewError);
+        }
+
+        if (caregivers && caregivers.length > 0) {
+          const members = caregivers.map(c => {
+            const name = (c.full_name && c.full_name.trim()) 
+              ? c.full_name.trim() 
+              : (c.email ? c.email.split('@')[0] : "Người chăm sóc");
+            return {
+              id: c.id,
+              name,
+              email: c.email,
+              role: "Đang chăm sóc bạn",
+              avatar_url: c.avatar_url,
+              initial: (name || "C")[0].toUpperCase()
+            };
+          });
           setFamilyMembers(members);
+        } else {
+          // Fallback to profiles if user_view returned empty
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('*')
+            .in('id', caregiverIds);
+            
+          if (profiles && profiles.length > 0) {
+            const members = profiles.map(p => {
+              const name = p.full_name?.trim() || p.phone || "Người chăm sóc";
+              return {
+                id: p.id,
+                name,
+                role: "Đang chăm sóc bạn",
+                avatar_url: p.avatar_url,
+                initial: (name || "C")[0].toUpperCase()
+              };
+            });
+            setFamilyMembers(members);
+          } else {
+            setFamilyMembers([]);
+          }
         }
       } else {
         setFamilyMembers([]);
       }
     } catch (e) {
       console.error("Failed to fetch caregivers:", e);
+      setFamilyMembers([]);
     } finally {
       setLoading(false);
     }
@@ -55,7 +90,7 @@ export default function FamilyScreen({ user }: Props) {
     if (user?.id) {
       fetchCaregivers();
       
-      const channel = supabase.channel('family-links-channel')
+      const channel = supabase.channel('family-links-elderly-channel')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'family_links', filter: `patient_id=eq.${user.id}` }, () => {
           fetchCaregivers();
         })
@@ -63,7 +98,7 @@ export default function FamilyScreen({ user }: Props) {
         
       return () => {
         supabase.removeChannel(channel);
-      }
+      };
     }
   }, [user?.id]);
 
@@ -111,7 +146,7 @@ export default function FamilyScreen({ user }: Props) {
       {/* 3. Thành viên gia đình & Người chăm sóc */}
       <div className="mb-5">
         <div className="flex justify-between items-center mb-3 px-1">
-          <h2 className="text-[#1A2B4B] font-bold text-base">Thành viên đã liên kết</h2>
+          <h2 className="text-[#1A2B4B] font-bold text-base">Người đang chăm sóc bạn</h2>
           <button 
             onClick={() => setIsLinkModalOpen(true)}
             className="flex items-center gap-1 text-primary font-bold text-xs bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-full active:scale-95 transition-all"
@@ -122,8 +157,8 @@ export default function FamilyScreen({ user }: Props) {
         </div>
         
         {loading ? (
-          <div className="flex justify-center items-center py-10">
-            <Loader2 className="animate-spin text-primary" size={30} />
+          <div className="flex justify-center items-center py-10 bg-white rounded-3xl border border-gray-100/80 shadow-sm">
+            <Loader2 className="animate-spin text-primary" size={32} />
           </div>
         ) : familyMembers.length === 0 ? (
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-8 flex flex-col items-center justify-center text-center">
@@ -146,7 +181,9 @@ export default function FamilyScreen({ user }: Props) {
                 key={member.id}
                 name={member.name}
                 role={member.role}
-                imgSrc={member.imgSrc}
+                email={member.email}
+                avatarUrl={member.avatar_url}
+                initial={member.initial}
                 hasBorder={idx < familyMembers.length - 1}
               />
             ))}
@@ -154,7 +191,7 @@ export default function FamilyScreen({ user }: Props) {
         )}
       </div>
 
-      {/* 5. Quyền của người chăm sóc */}
+      {/* 4. Quyền của người chăm sóc */}
       <div className="bg-white/70 rounded-3xl border border-gray-100/80 p-4 mt-auto">
         <h3 className="text-[#1A2B4B] font-bold text-sm mb-3">Quyền của người chăm sóc</h3>
         <div className="flex flex-col gap-2.5">
@@ -169,24 +206,50 @@ export default function FamilyScreen({ user }: Props) {
   );
 }
 
-function MemberItem({ name, role, imgSrc, hasBorder }: { name: string; role: string; imgSrc: string; hasBorder?: boolean }) {
+function MemberItem({ 
+  name, 
+  role, 
+  email,
+  avatarUrl, 
+  initial, 
+  hasBorder 
+}: { 
+  name: string; 
+  role: string; 
+  email?: string;
+  avatarUrl?: string; 
+  initial: string;
+  hasBorder?: boolean; 
+}) {
   return (
     <div 
-      onClick={() => alert(`Xem chi tiết: ${name}`)}
-      className={`flex items-center justify-between p-3.5 cursor-pointer hover:bg-gray-50/80 active:bg-gray-100 transition-colors group ${hasBorder ? 'border-b border-gray-100' : ''}`}
+      className={`flex items-center justify-between p-3.5 hover:bg-gray-50/80 transition-colors group ${hasBorder ? 'border-b border-gray-100' : ''}`}
     >
       <div className="flex items-center gap-3 min-w-0">
-        <img 
-          src={imgSrc} 
-          alt={name} 
-          className="w-11 h-11 rounded-full object-cover border border-gray-100 shadow-sm shrink-0" 
-        />
+        <div className="w-11 h-11 rounded-full overflow-hidden border border-gray-100 shadow-sm shrink-0 bg-blue-50 flex items-center justify-center text-primary font-bold">
+          {avatarUrl ? (
+            <img 
+              src={avatarUrl} 
+              alt={name} 
+              className="w-full h-full object-cover" 
+            />
+          ) : (
+            <span>{initial}</span>
+          )}
+        </div>
         <div className="min-w-0">
           <h4 className="text-[#1A2B4B] font-bold text-sm leading-tight truncate">{name}</h4>
-          <p className="text-gray-500 text-xs font-medium mt-1">{role}</p>
+          {email && <p className="text-gray-400 text-xs truncate mt-0.5">{email}</p>}
+          <p className="text-emerald-600 text-xs font-semibold mt-0.5 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+            {role}
+          </p>
         </div>
       </div>
-      <ChevronRight className="text-gray-300 group-hover:text-gray-500 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" size={18} />
+      <div className="flex items-center gap-1 text-xs text-primary font-bold bg-blue-50 px-2.5 py-1 rounded-full shrink-0">
+        <CheckCircle2 size={13} />
+        <span>Đã kết nối</span>
+      </div>
     </div>
   );
 }

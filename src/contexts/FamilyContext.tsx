@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { supabase } from "../lib/supabase";
 
-interface PatientInfo {
+export interface PatientInfo {
   id: string;
   name: string;
+  email?: string;
   avatar_url?: string;
   phone?: string;
 }
@@ -28,7 +29,6 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     console.log("=== DEBUG CONTEXT: User ===", userId);
     setIsLoading(true);
     try {
-      // Use maybeSingle() instead of single() to avoid throwing error when 0 rows found
       const { data, error } = await supabase
         .from("family_links")
         .select("patient_id")
@@ -43,25 +43,59 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       if (data && data.patient_id) {
         setLinkedPatientId(data.patient_id);
         
-        // Fetch patient profile
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
+        // Query user_view created in Supabase
+        const { data: userProfile, error: viewErr } = await supabase
+          .from('user_view')
+          .select('id, full_name, email, avatar_url')
           .eq('id', data.patient_id)
-          .single();
-          
-        if (profile) {
-          setPatientName(profile.full_name || "Người bệnh");
-          setPatientInfo({
-            id: profile.id,
-            name: profile.full_name || "Người bệnh",
-            avatar_url: profile.avatar_url,
-            phone: profile.phone
-          });
-        } else {
-          setPatientName("Người bệnh");
-          setPatientInfo({ id: data.patient_id, name: "Người bệnh" });
+          .maybeSingle();
+
+        console.log("=== DEBUG CONTEXT: user_view profile ===", userProfile, "Error:", viewErr);
+
+        let name = "";
+        let email = "";
+        let avatar_url = "";
+
+        if (userProfile) {
+          email = userProfile.email || "";
+          avatar_url = userProfile.avatar_url || "";
+          if (userProfile.full_name && userProfile.full_name.trim()) {
+            name = userProfile.full_name.trim();
+          } else if (email) {
+            name = email.split('@')[0];
+          }
         }
+
+        // Secondary fallback to profiles table if needed
+        if (!name) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', data.patient_id)
+            .maybeSingle();
+            
+          if (profile) {
+            if (profile.full_name && profile.full_name.trim()) {
+              name = profile.full_name.trim();
+            } else if (profile.phone) {
+              name = profile.phone;
+            }
+            avatar_url = avatar_url || profile.avatar_url || "";
+          }
+        }
+
+        // Last resort fallback
+        if (!name) {
+          name = "Thành viên";
+        }
+
+        setPatientName(name);
+        setPatientInfo({
+          id: data.patient_id,
+          name: name,
+          email: email,
+          avatar_url: avatar_url
+        });
       } else {
         setLinkedPatientId(null);
         setPatientName(null);
@@ -97,6 +131,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       } else if (mounted) {
         setLinkedPatientId(null);
         setPatientName(null);
+        setPatientInfo(null);
         setIsLoading(false);
       }
     });

@@ -12,7 +12,7 @@ interface Props {
 
 export default function AddMedModal({ isOpen, onClose, onAdd }: Props) {
   const { linkedPatientId, patientInfo } = useFamily();
-  const patientName = patientInfo?.name || "Người bệnh";
+  const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Thành viên");
   
   const [name, setName] = useState("");
   const [dosage, setDosage] = useState("1 viên");
