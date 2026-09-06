@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowRight, HeartPulse, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 export default function SplashScreen({ onDone }: { onDone: () => void }) {
   const [showSplash, setShowSplash] = useState(true);
@@ -13,17 +13,17 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
 
   const slides = [
     {
-      icon: <HeartPulse size={64} className="text-primary mb-6" strokeWidth={1.5} />,
+      image: "/dangnhap1.png",
       title: "Nhắc thuốc đúng giờ",
       desc: "Lên lịch uống thuốc dễ dàng, báo thức nhắc nhở để bạn không bao giờ quên một liều nào."
     },
     {
-      icon: <ShieldCheck size={64} className="text-emerald-500 mb-6" strokeWidth={1.5} />,
+      image: "/dangnhap2.png",
       title: "Kết nối Gia đình",
       desc: "Người chăm sóc có thể theo dõi, nhắc nhở và gọi điện trực tiếp từ xa một cách nhanh chóng."
     },
     {
-      icon: <Sparkles size={64} className="text-purple-500 mb-6" strokeWidth={1.5} />,
+      image: "/dangnhap3.png",
       title: "Trợ lý AI Thông minh",
       desc: "Quét nhận diện thuốc bằng Camera và nhận các báo cáo phân tích sức khỏe tự động từ AI."
     }
@@ -67,7 +67,7 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
       {/* Nút Skip */}
       <button 
         onClick={onDone}
-        className="absolute top-12 right-6 z-10 text-gray-400 font-semibold text-sm active:scale-95 transition-all"
+        className="absolute top-12 right-6 z-20 text-gray-400 font-bold text-[15px] active:scale-95 transition-all bg-gray-100/50 px-4 py-1.5 rounded-full"
       >
         Bỏ qua
       </button>
@@ -77,13 +77,19 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
       <div className="absolute top-[40%] -left-[20%] w-[250px] h-[250px] rounded-full bg-emerald-500/5 blur-3xl" />
 
       {/* Slide Content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-8 text-center relative z-10">
-        <div className="h-[300px] flex flex-col items-center justify-center animate-slide-up">
-          {slides[currentSlide].icon}
-          <h2 className="text-3xl font-black text-[#1A2B4B] mb-4 leading-tight">
+      <div className="flex-1 flex flex-col items-center justify-center px-8 text-center relative z-10 pt-10">
+        <div className="flex flex-col items-center justify-center animate-slide-up w-full">
+          <div className="w-full h-[280px] mb-8 relative flex items-center justify-center">
+            <img 
+              src={slides[currentSlide].image} 
+              alt={slides[currentSlide].title} 
+              className="w-full h-full object-contain drop-shadow-xl"
+            />
+          </div>
+          <h2 className="text-[28px] font-black text-[#1A2B4B] mb-3 leading-tight">
             {slides[currentSlide].title}
           </h2>
-          <p className="text-gray-500 text-base font-medium leading-relaxed max-w-[280px]">
+          <p className="text-gray-500 text-[15px] font-medium leading-relaxed max-w-[280px]">
             {slides[currentSlide].desc}
           </p>
         </div>
