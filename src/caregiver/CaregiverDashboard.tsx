@@ -1,77 +1,106 @@
 import { useState, useEffect } from "react";
-import { 
-  Phone, 
-  Calendar, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle, 
-  Scan, 
-  Plus, 
-  Sparkles,
-  ChevronRight,
-  Hand
-} from "lucide-react";
-import ScanLinkModal from "../screens/ScanLinkModal";
+import { Calendar, Phone, Plus, Scan, CheckCircle2, Clock, AlertCircle, ChevronRight, Sparkles, Loader2, Hand } from "lucide-react";
 import { Lunar } from "lunar-javascript";
+import ScanLinkModal from "../screens/ScanLinkModal";
+import { getTodaySchedule, getOverdueReminders, markAsTaken, Reminder } from "../services/medicationService";
+import { supabase } from "../lib/supabase";
 
 interface Props {
   user: any;
   onOpenCall: () => void;
-  onOpenScan: () => void;
+  onNavigateTab: (tabId: string) => void;
   onOpenAddMed: () => void;
-  onNavigateTab: (tab: string) => void;
-}
-
-interface CaregiverMedItem {
-  id: string;
-  time: string;
-  period: string;
-  status: string;
-  name: string;
-  dosage: string;
-  instruction: string;
-  confirmedAt?: string;
-  overdueMins?: number;
+  onOpenScan: () => void;
 }
 
 export default function CaregiverDashboard({
   user,
   onOpenCall,
-  onOpenScan,
+  onNavigateTab,
   onOpenAddMed,
-  onNavigateTab
+  onOpenScan
 }: Props) {
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const caregiverName = user?.user_metadata?.full_name || "Caregiver";
+  
+  const [patientId, setPatientId] = useState<string | null>(null);
+  const [patientName, setPatientName] = useState("");
   const [isLinked, setIsLinked] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
-  const [patientName, setPatientName] = useState("");
+
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [schedule, setSchedule] = useState<Reminder[]>([]);
+  const [overdue, setOverdue] = useState<Reminder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [markingId, setMarkingId] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentDate(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const lunar = Lunar.fromDate(currentDate);
-  const dayOfWeek = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"][currentDate.getDay()];
-  const dateString = `${dayOfWeek}, ${String(currentDate.getDate()).padStart(2, "0")}/${String(currentDate.getMonth() + 1).padStart(2, "0")}/${currentDate.getFullYear()}`;
-  const timeString = `${String(currentDate.getHours()).padStart(2, "0")}:${String(currentDate.getMinutes()).padStart(2, "0")}:${String(currentDate.getSeconds()).padStart(2, "0")}`;
-  const lunarString = `(Ngày ${String(lunar.getDay()).padStart(2, "0")} tháng ${String(lunar.getMonth()).padStart(2, "0")} Âm lịch)`;
+  // Fetch the patient ID from family_links
+  useEffect(() => {
+    const fetchLinkedPatient = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('family_links')
+          .select('elderly_id, elderly_name')
+          .eq('caregiver_id', user?.id)
+          .limit(1)
+          .single();
+          
+        if (data && data.elderly_id) {
+          setPatientId(data.elderly_id);
+          setPatientName(data.elderly_name || "Người bệnh");
+          setIsLinked(true);
+        } else {
+          setIsLinked(false);
+        }
+      } catch (e) {
+        console.error("Failed to fetch linked patient:", e);
+        setIsLinked(false);
+      }
+    };
+    
+    if (user?.id) fetchLinkedPatient();
+  }, [user?.id]);
 
-  const [todayMeds, setTodayMeds] = useState<CaregiverMedItem[]>([
-    { id: "1", time: "08:00", period: "Sáng", status: "done", name: "Amlodipine 5mg", dosage: "1 viên", instruction: "Uống sau ăn sáng", confirmedAt: "08:05" },
-    { id: "2", time: "12:00", period: "Trưa", status: "overdue", name: "Metformin 500mg", dosage: "1 viên", instruction: "Uống sau ăn trưa", overdueMins: 35 },
-    { id: "3", time: "20:00", period: "Tối", status: "future", name: "Atorvastatin 10mg", dosage: "1 viên", instruction: "Uống sau ăn tối" },
-    { id: "4", time: "22:00", period: "Trước ngủ", status: "future", name: "Vitamin B1 250mg", dosage: "1 viên", instruction: "Uống trước khi ngủ" }
-  ]);
+  useEffect(() => {
+    if (patientId) {
+      loadData();
+      
+      const interval = setInterval(loadData, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [patientId]);
 
-  const completedCount = todayMeds.filter((m) => m.status === "done").length;
+  const loadData = async () => {
+    if (!patientId) return;
+    try {
+      setLoading(true);
+      const [todayData, overdueData] = await Promise.all([
+        getTodaySchedule(patientId),
+        getOverdueReminders(patientId)
+      ]);
+      setSchedule(todayData);
+      setOverdue(overdueData);
+    } catch (error) {
+      console.error("Failed to load caregiver data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const handleMarkDone = (id: string) => {
-    setTodayMeds((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, status: "done", confirmedAt: "Vừa xác nhận" } : item
-      )
-    );
+  const handleMarkDone = async (reminderId: string) => {
+    try {
+      setMarkingId(reminderId);
+      await markAsTaken(reminderId);
+      await loadData();
+    } catch (error) {
+      console.error("Failed to mark as done:", error);
+    } finally {
+      setMarkingId(null);
+    }
   };
 
   if (!isLinked) {
@@ -84,6 +113,8 @@ export default function CaregiverDashboard({
           onLinkSuccess={(name) => {
             setPatientName(name);
             setIsLinked(true);
+            // Need to reload to get new patient id, but simple refresh is fine
+            window.location.reload();
           }}
         />
         <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mb-6 text-primary border-4 border-white shadow-sm">
@@ -103,6 +134,8 @@ export default function CaregiverDashboard({
     );
   }
 
+  const lunar = Lunar.fromDate(currentDate);
+  const dayOfWeek = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"][currentDate.getDay()];
   const dateString = `${dayOfWeek}, ${String(currentDate.getDate()).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
   const timeString = `${String(currentDate.getHours()).padStart(2, '0')}:${String(currentDate.getMinutes()).padStart(2, '0')}:${String(currentDate.getSeconds()).padStart(2, '0')}`;
   const lunarString = `(Ngày ${String(lunar.getDay()).padStart(2, '0')} tháng ${String(lunar.getMonth()).padStart(2, '0')} Âm lịch)`;
@@ -122,7 +155,7 @@ export default function CaregiverDashboard({
           <div>
             <p className="text-gray-500 text-[11px] font-bold uppercase tracking-wider">Người chăm sóc,</p>
             <h1 className="text-base font-black text-[#1a2b4b] flex items-center gap-1">
-              {caregiverName} <span className="text-lg">👋</span>
+              {caregiverName} <Hand size={18} className="text-amber-400" fill="currentColor" />
             </h1>
           </div>
         </div>
@@ -215,7 +248,7 @@ export default function CaregiverDashboard({
         </div>
       )}
 
-      {/* 4. Quick Action Row (Matches SOS & AI Scan row from HomeScreen) */}
+      {/* 4. Quick Action Row */}
       <div className="flex gap-3 mt-1">
         {/* Thêm thuốc nhanh (3/4 width) */}
         <div 
