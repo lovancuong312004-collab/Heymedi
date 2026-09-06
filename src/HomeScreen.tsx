@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Calendar, Volume2, Scan, AlertCircle } from "lucide-react";
+import { Calendar, Volume2, Scan, AlertCircle, Loader2 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import SOSModal from "./screens/SOSModal";
+import { getTodaySchedule, markAsTaken, Reminder } from "./services/medicationService";
 
 interface Props {
   user: any;
@@ -11,13 +12,51 @@ interface Props {
 
 export default function HomeScreen({ user, onShowAlert }: Props) {
   const userName = user?.user_metadata?.full_name || "Ông/Bà";
+  const patientId = user?.id;
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isSOSOpen, setIsSOSOpen] = useState(false);
+  
+  const [schedule, setSchedule] = useState<Reminder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [takingId, setTakingId] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentDate(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (patientId) {
+      loadSchedule();
+    }
+  }, [patientId]);
+
+  const loadSchedule = async () => {
+    try {
+      setLoading(true);
+      const data = await getTodaySchedule(patientId);
+      setSchedule(data);
+    } catch (error) {
+      console.error("Failed to load schedule:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTakeMedication = async (reminderId: string) => {
+    try {
+      setTakingId(reminderId);
+      await markAsTaken(reminderId);
+      await loadSchedule(); // Refresh list after taking
+      onShowAlert(); // Trigger the success alert modal from parent if needed
+    } catch (error) {
+      console.error("Failed to mark as taken:", error);
+      alert("Có lỗi xảy ra, vui lòng thử lại!");
+    } finally {
+      setTakingId(null);
+    }
+  };
 
   const lunar = Lunar.fromDate(currentDate);
   const dayOfWeek = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"][currentDate.getDay()];
@@ -25,12 +64,15 @@ export default function HomeScreen({ user, onShowAlert }: Props) {
   const timeString = `${String(currentDate.getHours()).padStart(2, '0')}:${String(currentDate.getMinutes()).padStart(2, '0')}:${String(currentDate.getSeconds()).padStart(2, '0')}`;
   const lunarString = `(Ngày ${String(lunar.getDay()).padStart(2, '0')} tháng ${String(lunar.getMonth()).padStart(2, '0')} Âm lịch)`;
 
+  // Find the next pending medication
+  const nextReminder = schedule.find(r => r.status === 'pending');
+
   return (
     <>
       <SOSModal 
         isOpen={isSOSOpen} 
         onClose={() => setIsSOSOpen(false)} 
-        contactName="Cháu An" 
+        contactName="Người thân" 
       />
       
       <div className="p-5 flex flex-col gap-4">
@@ -72,26 +114,59 @@ export default function HomeScreen({ user, onShowAlert }: Props) {
           </div>
 
           <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 flex flex-col relative overflow-hidden min-h-[220px]">
-            <p className="text-primary font-bold mb-2 text-xl">08:00 sáng</p>
-            <h2 className="text-[#1a2b4b] font-black text-4xl mb-3 w-[65%] leading-tight">Amlodipine 5mg</h2>
-            <p className="text-gray-700 text-lg font-medium w-[65%] leading-snug">1 viên • Uống sau ăn sáng</p>
-
-            <div className="absolute right-[-15px] top-6">
-              <div className="w-32 h-32 bg-gray-50 rounded-full shadow-inner border border-gray-100 overflow-hidden">
-                <img src="https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?q=80&w=200&auto=format&fit=crop" alt="Ảnh thuốc" className="w-full h-full object-cover" />
+            {loading ? (
+              <div className="flex-1 flex flex-col items-center justify-center">
+                <Loader2 size={32} className="text-primary animate-spin mb-2" />
+                <p className="text-gray-500">Đang tải lịch thuốc...</p>
               </div>
-            </div>
+            ) : nextReminder ? (
+              <>
+                <p className="text-primary font-bold mb-2 text-xl">
+                  {new Date(nextReminder.scheduled_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} 
+                  {new Date(nextReminder.scheduled_time).getHours() >= 12 ? ' chiều' : ' sáng'}
+                </p>
+                <h2 className="text-[#1a2b4b] font-black text-4xl mb-3 w-[65%] leading-tight truncate">
+                  {nextReminder.medication?.name || "Thuốc không tên"}
+                </h2>
+                <p className="text-gray-700 text-lg font-medium w-[65%] leading-snug line-clamp-2">
+                  {nextReminder.medication?.dosage} • {nextReminder.medication?.instructions}
+                </p>
 
-            <div className="mt-auto pt-8">
-              <button onClick={onShowAlert} className="w-full bg-success text-white py-5 rounded-2xl font-bold text-xl shadow-lg shadow-green-200 active:scale-[0.98] transition-all tracking-wide">
-                ĐẾN GIỜ UỐNG THUỐC
-              </button>
-            </div>
+                <div className="absolute right-[-15px] top-6">
+                  <div className="w-32 h-32 bg-gray-50 rounded-full shadow-inner border border-gray-100 overflow-hidden flex items-center justify-center">
+                    {nextReminder.medication?.image_url ? (
+                      <img src={nextReminder.medication.image_url} alt="Ảnh thuốc" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-4xl">💊</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-auto pt-8">
+                  <button 
+                    onClick={() => handleTakeMedication(nextReminder.id)}
+                    disabled={takingId === nextReminder.id}
+                    className="w-full bg-success text-white py-5 rounded-2xl font-bold text-xl shadow-lg shadow-green-200 active:scale-[0.98] transition-all tracking-wide disabled:opacity-70 flex items-center justify-center gap-2"
+                  >
+                    {takingId === nextReminder.id ? <Loader2 size={24} className="animate-spin" /> : null}
+                    {takingId === nextReminder.id ? "ĐANG LƯU..." : "ĐẾN GIỜ UỐNG THUỐC"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center py-4">
+                <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-4">
+                  <span className="text-4xl">🎉</span>
+                </div>
+                <h3 className="text-xl font-bold text-[#1a2b4b] text-center mb-1">Tuyệt vời!</h3>
+                <p className="text-gray-500 text-center">Bạn đã uống xong tất cả các cữ thuốc hôm nay.</p>
+              </div>
+            )}
           </div>
         </div>
 
         {/* SOS + AI Row */}
-        <div className="flex gap-3">
+        <div className="flex gap-3 mt-auto">
           <div 
             onClick={() => setIsSOSOpen(true)}
             className="flex-[3] bg-[#FFF0F0] rounded-2xl p-4 flex items-center gap-4 border border-[#FFD6D6] shadow-sm cursor-pointer active:scale-[0.98] transition-all"
