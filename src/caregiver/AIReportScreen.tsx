@@ -1,7 +1,7 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { 
   Sparkles, 
-  TrendingUp, 
+  
   CheckCircle2, 
   Download, 
   Brain
@@ -13,13 +13,13 @@ export default function AIReportScreen() {
   const [appliedSuggestion, setAppliedSuggestion] = useState(false);
 
   const weekData = [
-    { day: "T2", percent: 100, label: "4/4 cữ" },
-    { day: "T3", percent: 75, label: "3/4 cữ" },
-    { day: "T4", percent: 100, label: "4/4 cữ" },
-    { day: "T5", percent: 50, label: "2/4 cữ" },
-    { day: "T6", percent: 75, label: "3/4 cữ" },
-    { day: "T7", percent: 100, label: "4/4 cữ" },
-    { day: "CN", percent: 75, label: "3/4 cữ" }
+    { day: "T2", percent: 100, label: "4/4 cá»¯" },
+    { day: "T3", percent: 75, label: "3/4 cá»¯" },
+    { day: "T4", percent: 100, label: "4/4 cá»¯" },
+    { day: "T5", percent: 50, label: "2/4 cá»¯" },
+    { day: "T6", percent: 75, label: "3/4 cá»¯" },
+    { day: "T7", percent: 100, label: "4/4 cá»¯" },
+    { day: "CN", percent: 75, label: "3/4 cá»¯" }
   ];
 
   return (
@@ -27,11 +27,11 @@ export default function AIReportScreen() {
       
       {/* Header */}
       <div className="flex justify-between items-center mb-2 relative mt-2">
-        <h1 className="text-2xl font-bold text-[#1a2b4b] w-full text-center">Báo cáo tuân thủ AI</h1>
+        <h1 className="text-2xl font-bold text-[#1a2b4b] w-full text-center">BÃ¡o cÃ¡o tuÃ¢n thá»§ AI</h1>
         <button
-          onClick={() => alert("Đang xuất file báo cáo y khoa PDF...")}
+          onClick={() => alert("Äang xuáº¥t file bÃ¡o cÃ¡o y khoa PDF...")}
           className="absolute right-0 w-9 h-9 rounded-full bg-white border border-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all shadow-sm"
-          title="Tải báo cáo PDF"
+          title="Táº£i bÃ¡o cÃ¡o PDF"
         >
           <Download size={17} />
         </button>
@@ -40,9 +40,9 @@ export default function AIReportScreen() {
       {/* Filter Tabs - Prototype style */}
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-5 px-5 no-scrollbar">
         {[
-          { key: "7days", label: "7 ngày qua" },
-          { key: "month", label: "Tháng này" },
-          { key: "3months", label: "3 tháng qua" }
+          { key: "7days", label: "7 ngÃ y qua" },
+          { key: "month", label: "ThÃ¡ng nÃ y" },
+          { key: "3months", label: "3 thÃ¡ng qua" }
         ].map((tab) => {
           const isActive = timeRange === tab.key;
           return (
@@ -70,39 +70,11 @@ export default function AIReportScreen() {
               <Brain size={20} />
             </div>
             <div>
-              <span className="text-xs font-bold text-gray-400 block uppercase">Độ tuân thủ của Ông Minh</span>
+              <span className="text-xs font-bold text-gray-400 block uppercase">Äá»™ tuÃ¢n thá»§ cá»§a Ã”ng Minh</span>
               <span className="text-xs font-extrabold text-success bg-[#EAF6ED] px-2 py-0.5 rounded-md border border-green-100">
-                Xếp loại: RẤT TỐT
+                Xáº¿p loáº¡i: Ráº¤T Tá»T
               </span>
             </div>
-          </div>
-          <span className="text-xs font-bold text-primary flex items-center gap-0.5 bg-[#EBF1FF] px-2.5 py-1 rounded-full">
-            <TrendingUp size={14} /> +7% tuần này
-          </span>
-        </div>
-
-        <div className="flex items-baseline gap-2">
-          <h2 className="text-5xl font-black text-[#1a2b4b]">82%</h2>
-          <span className="text-gray-500 text-sm font-semibold">tổng số cữ uống đúng</span>
-        </div>
-
-        <p className="text-gray-600 text-xs font-medium leading-relaxed">
-          AI ghi nhận Ông Minh đã uống đúng lịch <b>23/28 cữ thuốc</b> trong 7 ngày qua.
-        </p>
-
-        {/* 3 Metric counters */}
-        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100 text-center">
-          <div className="bg-[#EAF6ED] rounded-2xl p-2.5 border border-green-100">
-            <span className="text-[10px] text-gray-500 block font-semibold">Đúng giờ</span>
-            <span className="text-base font-black text-success">23 cữ</span>
-          </div>
-          <div className="bg-[#FEF3C7] rounded-2xl p-2.5 border border-amber-100">
-            <span className="text-[10px] text-gray-500 block font-semibold">Trễ giờ</span>
-            <span className="text-base font-black text-amber-700">3 cữ</span>
-          </div>
-          <div className="bg-[#FFF0F0] rounded-2xl p-2.5 border border-red-100">
-            <span className="text-[10px] text-gray-500 block font-semibold">Quên uống</span>
-            <span className="text-base font-black text-danger">2 cữ</span>
           </div>
         </div>
       </div>
@@ -110,8 +82,8 @@ export default function AIReportScreen() {
       {/* SVG Bar Chart Card */}
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-extrabold text-base text-[#1a2b4b]">Biểu đồ 7 ngày gần nhất</h3>
-          <span className="text-xs text-gray-400 font-medium">Mục tiêu: 100%</span>
+          <h3 className="font-extrabold text-base text-[#1a2b4b]">Biá»ƒu Ä‘á»“ 7 ngÃ y gáº§n nháº¥t</h3>
+          <span className="text-xs text-gray-400 font-medium">Má»¥c tiÃªu: 100%</span>
         </div>
 
         <div className="h-40 w-full flex items-end justify-between pt-4 pb-1 px-1">
@@ -144,7 +116,7 @@ export default function AIReportScreen() {
 
       {/* SVG Donut Chart Card */}
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 space-y-4">
-        <h3 className="font-extrabold text-base text-[#1a2b4b]">Phân loại thói quen uống thuốc</h3>
+        <h3 className="font-extrabold text-base text-[#1a2b4b]">PhÃ¢n loáº¡i thÃ³i quen uá»‘ng thuá»‘c</h3>
         
         <div className="flex items-center justify-around gap-4">
           <div className="relative w-28 h-28 shrink-0 flex items-center justify-center">
@@ -182,7 +154,7 @@ export default function AIReportScreen() {
             </svg>
             <div className="absolute flex flex-col items-center">
               <span className="text-lg font-black text-[#1a2b4b]">78%</span>
-              <span className="text-[9px] text-gray-400 font-bold">Chuẩn giờ</span>
+              <span className="text-[9px] text-gray-400 font-bold">Chuáº©n giá»</span>
             </div>
           </div>
 
@@ -190,23 +162,23 @@ export default function AIReportScreen() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-full bg-primary" />
-                <span className="font-medium text-gray-600">Đúng giờ</span>
+                <span className="font-medium text-gray-600">ÄÃºng giá»</span>
               </div>
-              <span className="font-bold text-[#1a2b4b]">78% (23 cữ)</span>
+              <span className="font-bold text-[#1a2b4b]">78% (23 cá»¯)</span>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                <span className="font-medium text-gray-600">Uống muộn</span>
+                <span className="font-medium text-gray-600">Uá»‘ng muá»™n</span>
               </div>
-              <span className="font-bold text-[#1a2b4b]">12% (3 cữ)</span>
+              <span className="font-bold text-[#1a2b4b]">12% (3 cá»¯)</span>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-full bg-danger" />
-                <span className="font-medium text-gray-600">Bỏ lỡ</span>
+                <span className="font-medium text-gray-600">Bá» lá»¡</span>
               </div>
-              <span className="font-bold text-[#1a2b4b]">10% (2 cữ)</span>
+              <span className="font-bold text-[#1a2b4b]">10% (2 cá»¯)</span>
             </div>
           </div>
         </div>
@@ -219,24 +191,24 @@ export default function AIReportScreen() {
             <Sparkles size={20} />
           </div>
           <div>
-            <h3 className="font-extrabold text-base text-[#1a2b4b]">Nhận định & Đề xuất AI</h3>
-            <p className="text-xs text-gray-400 font-medium">Phân tích hành vi tự động bằng máy học</p>
+            <h3 className="font-extrabold text-base text-[#1a2b4b]">Nháº­n Ä‘á»‹nh & Äá» xuáº¥t AI</h3>
+            <p className="text-xs text-gray-400 font-medium">PhÃ¢n tÃ­ch hÃ nh vi tá»± Ä‘á»™ng báº±ng mÃ¡y há»c</p>
           </div>
         </div>
 
         <div className="bg-blue-50/60 rounded-2xl p-3.5 border border-blue-100 text-xs text-gray-700 leading-relaxed space-y-1.5">
           <p>
-            🔍 <b>Phát hiện:</b> Cả 2 lần bỏ lỡ và 3 lần trễ giờ đều rơi vào <b>cữ trưa (12:00)</b> của thuốc <i>Metformin 500mg</i>. Cữ Sáng và Tối đạt 100%.
+            ðŸ” <b>PhÃ¡t hiá»‡n:</b> Cáº£ 2 láº§n bá» lá»¡ vÃ  3 láº§n trá»… giá» Ä‘á»u rÆ¡i vÃ o <b>cá»¯ trÆ°a (12:00)</b> cá»§a thuá»‘c <i>Metformin 500mg</i>. Cá»¯ SÃ¡ng vÃ  Tá»‘i Ä‘áº¡t 100%.
           </p>
           <p>
-            💡 <b>Đề xuất:</b> Dời giờ nhắc sang <b>11:30</b> trước bữa ăn trưa để Ông Minh không bị quên khi đi nghỉ trưa.
+            ðŸ’¡ <b>Äá» xuáº¥t:</b> Dá»i giá» nháº¯c sang <b>11:30</b> trÆ°á»›c bá»¯a Äƒn trÆ°a Ä‘á»ƒ Ã”ng Minh khÃ´ng bá»‹ quÃªn khi Ä‘i nghá»‰ trÆ°a.
           </p>
         </div>
 
         <button
           onClick={() => {
             setAppliedSuggestion(true);
-            alert("Đã tự động cập nhật cữ thuốc trưa của Ông Minh thành 11:30 theo đề xuất AI!");
+            alert("ÄÃ£ tá»± Ä‘á»™ng cáº­p nháº­t cá»¯ thuá»‘c trÆ°a cá»§a Ã”ng Minh thÃ nh 11:30 theo Ä‘á» xuáº¥t AI!");
           }}
           disabled={appliedSuggestion}
           className={cn(
@@ -248,11 +220,11 @@ export default function AIReportScreen() {
         >
           {appliedSuggestion ? (
             <>
-              <CheckCircle2 size={16} /> ĐÃ ÁP DỤNG ĐỀ XUẤT NÀY
+              <CheckCircle2 size={16} /> ÄÃƒ ÃP Dá»¤NG Äá»€ XUáº¤T NÃ€Y
             </>
           ) : (
             <>
-              <Sparkles size={16} /> ÁP DỤNG ĐỀ XUẤT CỦA AI NGAY
+              <Sparkles size={16} /> ÃP Dá»¤NG Äá»€ XUáº¤T Cá»¦A AI NGAY
             </>
           )}
         </button>
@@ -261,3 +233,4 @@ export default function AIReportScreen() {
     </div>
   );
 }
+

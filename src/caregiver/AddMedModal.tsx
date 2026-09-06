@@ -11,7 +11,8 @@ interface Props {
 }
 
 export default function AddMedModal({ isOpen, onClose, onAdd }: Props) {
-  const { linkedPatientId, patientName } = useFamily();
+  const { linkedPatientId, patientInfo } = useFamily();
+  const patientName = patientInfo?.name || "Người bệnh";
   
   const [name, setName] = useState("");
   const [dosage, setDosage] = useState("1 viên");
@@ -52,7 +53,14 @@ export default function AddMedModal({ isOpen, onClose, onAdd }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !linkedPatientId) return;
+    if (!name.trim()) {
+      alert("Vui lòng nhập tên thuốc");
+      return;
+    }
+    if (!linkedPatientId) {
+      alert("Lỗi: Không tìm thấy ID bệnh nhân (linkedPatientId null)");
+      return;
+    }
 
     try {
       setIsSubmitting(true);
@@ -80,6 +88,8 @@ export default function AddMedModal({ isOpen, onClose, onAdd }: Props) {
 
       const fullInstruction = `${instruction} ${note ? `(${note})` : ""}`.trim();
       
+      console.log("=== DEBUG ADD MED ===", { linkedPatientId, name, dosage, fullInstruction, time, imageUrl });
+      
       await addMedicationAndReminder(
         linkedPatientId,
         name,
@@ -96,9 +106,9 @@ export default function AddMedModal({ isOpen, onClose, onAdd }: Props) {
       setImageFile(null);
       setImagePreview(null);
       onClose();
-    } catch (err) {
-      console.error(err);
-      alert("Lỗi khi lưu thuốc!");
+    } catch (err: any) {
+      console.error("ADD_MED_ERROR:", err);
+      alert(`LỖI THÊM THUỐC: ${err.message || JSON.stringify(err)}`);
     } finally {
       setIsSubmitting(false);
     }

@@ -12,6 +12,7 @@ import {
   ToggleLeft,
   ToggleRight
 } from "lucide-react";
+import { useFamily } from "../contexts/FamilyContext";
 
 interface Props {
   user: any;
@@ -19,10 +20,13 @@ interface Props {
 }
 
 export default function CaregiverSettings({ user, onLogout }: Props) {
+  const { linkedPatientId, patientInfo } = useFamily();
   const [autoAlert, setAutoAlert] = useState(true);
   const [dailyAiReport, setDailyAiReport] = useState(true);
   const [aiVoiceCall, setAiVoiceCall] = useState(false);
   const meta = user?.user_metadata || {};
+  
+  const patientName = patientInfo?.name || "Người bệnh";
 
   return (
     <div className="p-5 flex flex-col min-h-full bg-[#F4F7FB] animate-fade-in">
@@ -34,12 +38,16 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
 
       {/* Profile Card */}
       <div className="bg-white rounded-3xl p-4 border border-gray-100 shadow-sm flex items-center gap-3.5 mb-4">
-        <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 border-2 border-white shadow-sm shrink-0">
-          <img 
-            src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop&crop=face" 
-            alt="Avatar" 
-            className="w-full h-full object-cover"
-          />
+        <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 border-2 border-white shadow-sm flex items-center justify-center shrink-0">
+          {meta.avatar_url ? (
+            <img 
+              src={meta.avatar_url} 
+              alt="Avatar" 
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <span className="font-bold text-gray-500">{(meta.full_name || "C")[0]}</span>
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -49,99 +57,110 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
             </span>
           </div>
           <p className="text-xs text-gray-500 font-medium mt-0.5">SĐT: {meta.phone || "Chưa cập nhật"}</p>
-          <p className="text-xs text-success font-bold mt-0.5 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-success inline-block" />
-            Đang quản lý: Ông Minh (Bố)
-          </p>
+          {linkedPatientId ? (
+            <p className="text-xs text-success font-bold mt-0.5 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-success inline-block" />
+              Đang quản lý: {patientName}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-500 font-bold mt-0.5 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-gray-400 inline-block" />
+              Chưa liên kết
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Main Settings Card - Matches prototype style */}
+      {/* Main Settings Card */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden mb-6">
         
-        {/* Patient Profile */}
-        <SettingRow
-          icon={<Shield size={20} />}
-          label="Hồ sơ bệnh án của Ông Minh"
-          value="Tăng HA, tiểu đường"
-          hasBorder
-          onClick={() => alert("Hồ sơ bệnh án của Ông Minh: Tiền sử tăng huyết áp & tiểu đường tuýp 2")}
-        />
+        {linkedPatientId && (
+          <>
+            {/* Patient Profile */}
+            <SettingRow
+              icon={<Shield size={20} />}
+              label={`Hồ sơ bệnh án của ${patientName}`}
+              value="Xem chi tiết"
+              hasBorder
+              onClick={() => alert(`Hồ sơ bệnh án của ${patientName} đang được cập nhật.`)}
+            />
 
-        {/* Co-caregivers */}
-        <SettingRow
-          icon={<Users size={20} />}
-          label="Người cùng chăm sóc"
-          value="Chị Hương (Mời)"
-          hasBorder
-          onClick={() => alert("Mời thêm thành viên trong gia đình cùng theo dõi lịch uống thuốc của Ông Minh")}
-        />
+            {/* Co-caregivers */}
+            <SettingRow
+              icon={<Users size={20} />}
+              label="Người cùng chăm sóc"
+              value="Thêm"
+              hasBorder
+              onClick={() => alert(`Mời thêm thành viên trong gia đình cùng theo dõi lịch uống thuốc của ${patientName}`)}
+            />
 
-        {/* Toggle 1: Overdue alerts */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <div className="flex items-center gap-3.5">
-            <div className="w-6 flex justify-center items-center text-[#1a2b4b]">
-              <Bell size={20} />
+            {/* Toggle 1: Overdue alerts */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+              <div className="flex items-center gap-3.5">
+                <div className="w-6 flex justify-center items-center text-[#1a2b4b]">
+                  <Bell size={20} />
+                </div>
+                <div>
+                  <span className="text-[#1a2b4b] font-semibold text-base block leading-tight">
+                    Cảnh báo quá giờ uống
+                  </span>
+                  <span className="text-xs text-gray-400 font-medium">Báo động khi trễ &gt; 30 phút</span>
+                </div>
+              </div>
+              <button onClick={() => setAutoAlert(!autoAlert)} className="cursor-pointer">
+                {autoAlert ? (
+                  <ToggleRight size={36} className="text-primary fill-primary" />
+                ) : (
+                  <ToggleLeft size={36} className="text-gray-300" />
+                )}
+              </button>
             </div>
-            <div>
-              <span className="text-[#1a2b4b] font-semibold text-base block leading-tight">
-                Cảnh báo quá giờ uống
-              </span>
-              <span className="text-xs text-gray-400 font-medium">Báo động khi trễ &gt; 30 phút</span>
-            </div>
-          </div>
-          <button onClick={() => setAutoAlert(!autoAlert)} className="cursor-pointer">
-            {autoAlert ? (
-              <ToggleRight size={36} className="text-primary fill-primary" />
-            ) : (
-              <ToggleLeft size={36} className="text-gray-300" />
-            )}
-          </button>
-        </div>
 
-        {/* Toggle 2: Daily AI Report */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <div className="flex items-center gap-3.5">
-            <div className="w-6 flex justify-center items-center text-[#1a2b4b]">
-              <Sparkles size={20} />
+            {/* Toggle 2: Daily AI Report */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+              <div className="flex items-center gap-3.5">
+                <div className="w-6 flex justify-center items-center text-[#1a2b4b]">
+                  <Sparkles size={20} />
+                </div>
+                <div>
+                  <span className="text-[#1a2b4b] font-semibold text-base block leading-tight">
+                    Báo cáo AI lúc 21:00
+                  </span>
+                  <span className="text-xs text-gray-400 font-medium">Tự động gửi đánh giá mỗi tối</span>
+                </div>
+              </div>
+              <button onClick={() => setDailyAiReport(!dailyAiReport)} className="cursor-pointer">
+                {dailyAiReport ? (
+                  <ToggleRight size={36} className="text-primary fill-primary" />
+                ) : (
+                  <ToggleLeft size={36} className="text-gray-300" />
+                )}
+              </button>
             </div>
-            <div>
-              <span className="text-[#1a2b4b] font-semibold text-base block leading-tight">
-                Báo cáo AI lúc 21:00
-              </span>
-              <span className="text-xs text-gray-400 font-medium">Tự động gửi đánh giá mỗi tối</span>
-            </div>
-          </div>
-          <button onClick={() => setDailyAiReport(!dailyAiReport)} className="cursor-pointer">
-            {dailyAiReport ? (
-              <ToggleRight size={36} className="text-primary fill-primary" />
-            ) : (
-              <ToggleLeft size={36} className="text-gray-300" />
-            )}
-          </button>
-        </div>
 
-        {/* Toggle 3: Auto Voice Call */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <div className="flex items-center gap-3.5">
-            <div className="w-6 flex justify-center items-center text-[#1a2b4b]">
-              <PhoneCall size={20} />
+            {/* Toggle 3: Auto Voice Call */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+              <div className="flex items-center gap-3.5">
+                <div className="w-6 flex justify-center items-center text-[#1a2b4b]">
+                  <PhoneCall size={20} />
+                </div>
+                <div>
+                  <span className="text-[#1a2b4b] font-semibold text-base block leading-tight">
+                    Tự động gọi điện AI
+                  </span>
+                  <span className="text-xs text-gray-400 font-medium">Phát giọng nói nhắc {patientName}</span>
+                </div>
+              </div>
+              <button onClick={() => setAiVoiceCall(!aiVoiceCall)} className="cursor-pointer">
+                {aiVoiceCall ? (
+                  <ToggleRight size={36} className="text-primary fill-primary" />
+                ) : (
+                  <ToggleLeft size={36} className="text-gray-300" />
+                )}
+              </button>
             </div>
-            <div>
-              <span className="text-[#1a2b4b] font-semibold text-base block leading-tight">
-                Tự động gọi điện AI
-              </span>
-              <span className="text-xs text-gray-400 font-medium">Phát giọng nói nhắc Ông Minh</span>
-            </div>
-          </div>
-          <button onClick={() => setAiVoiceCall(!aiVoiceCall)} className="cursor-pointer">
-            {aiVoiceCall ? (
-              <ToggleRight size={36} className="text-primary fill-primary" />
-            ) : (
-              <ToggleLeft size={36} className="text-gray-300" />
-            )}
-          </button>
-        </div>
+          </>
+        )}
 
         {/* Language */}
         <SettingRow

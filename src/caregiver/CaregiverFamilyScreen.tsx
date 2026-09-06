@@ -5,7 +5,7 @@ import { useFamily } from "../contexts/FamilyContext";
 import { supabase } from "../lib/supabase";
 
 export default function CaregiverFamilyScreen({ user }: { user: any }) {
-  const { linkedPatientId, patientName, isLoading, refreshLink } = useFamily();
+  const { linkedPatientId, patientInfo, isLoading, refreshLink } = useFamily();
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
 
   const handleUnlink = async () => {
@@ -17,6 +17,7 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
         .eq('caregiver_id', user?.id)
         .eq('patient_id', linkedPatientId);
       
+      alert("Đã hủy liên kết thành công!");
       await refreshLink();
     } catch (e) {
       console.error(e);
@@ -32,6 +33,8 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
       </div>
     );
   }
+
+  const patientName = patientInfo?.name || "Người bệnh";
 
   return (
     <div className="p-5 flex flex-col h-full min-h-[70vh]">
@@ -63,7 +66,7 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
             onClick={() => setIsLinkModalOpen(true)}
             className="w-full max-w-[250px] bg-primary text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-primary/25 active:scale-95 transition-all flex items-center justify-center gap-2"
           >
-            <Plus size={20} /> LIÊN KẾT NGAY
+            <Plus size={20} /> LIÊN KẾT BẰNG MÃ / QR
           </button>
         </div>
       ) : (
@@ -78,7 +81,11 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
 
             <div className="flex items-center gap-4 mb-6">
               <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-green-100 shadow-sm shrink-0 bg-gray-100 flex items-center justify-center">
-                <User size={30} className="text-gray-400" />
+                {patientInfo?.avatar_url ? (
+                  <img src={patientInfo.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <User size={30} className="text-gray-400" />
+                )}
               </div>
               <div>
                 <p className="text-gray-500 text-xs font-medium uppercase tracking-wider mb-0.5">Đang theo dõi sức khỏe cho</p>

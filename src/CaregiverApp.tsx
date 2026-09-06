@@ -18,7 +18,7 @@ import CaregiverFamilyScreen from "./caregiver/CaregiverFamilyScreen";
 import CallModal from "./caregiver/CallModal";
 import ScanPrescriptionModal from "./caregiver/ScanPrescriptionModal";
 import AddMedModal from "./caregiver/AddMedModal";
-import { FamilyProvider } from "./contexts/FamilyContext";
+import { FamilyProvider, useFamily } from "./contexts/FamilyContext";
 
 interface Props {
   user: any;
@@ -36,6 +36,10 @@ export default function CaregiverApp({ user, onLogout }: Props) {
 }
 
 function CaregiverAppContent({ user, onLogout }: Props) {
+  const { patientInfo } = useFamily();
+  const patientName = patientInfo?.name || "Người bệnh";
+  const patientPhone = patientInfo?.phone || "0901 234 567";
+
   const [activeTab, setActiveTab] = useState<CaregiverTab>("dashboard");
   const [isCallOpen, setIsCallOpen] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
@@ -48,8 +52,8 @@ function CaregiverAppContent({ user, onLogout }: Props) {
       <CallModal
         isOpen={isCallOpen}
         onClose={() => setIsCallOpen(false)}
-        patientName="Người bệnh"
-        patientPhone="0901 234 567"
+        patientName={patientName}
+        patientPhone={patientPhone}
         reminderNote="Gọi nhắc uống thuốc"
       />
 

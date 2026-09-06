@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+﻿import { useState, useRef } from "react";
 import { X, Camera, Scan, Check, Loader2, Trash2 } from "lucide-react";
 import { analyzePrescription, type ParsedMedication } from "../utils/geminiVision";
 import { addMedicationAndReminder } from "../services/medicationService";
@@ -14,7 +14,7 @@ interface Props {
 export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Props) {
   const { linkedPatientId } = useFamily();
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [isScanning, setIsScanning] = useState(false);
@@ -44,11 +44,11 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
         setMedsList(results);
         setStep("review");
       } else {
-        alert("Không tìm thấy thuốc nào trong ảnh. Vui lòng chụp lại rõ ràng hơn.");
+        alert("KhÃ´ng tÃ¬m tháº¥y thuá»‘c nÃ o trong áº£nh. Vui lÃ²ng chá»¥p láº¡i rÃµ rÃ ng hÆ¡n.");
         resetState();
       }
     } catch (err: any) {
-      alert(err.message || "Có lỗi xảy ra khi quét ảnh");
+      alert(err.message || "CÃ³ lá»—i xáº£y ra khi quÃ©t áº£nh");
       resetState();
     } finally {
       setIsScanning(false);
@@ -108,9 +108,9 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
       for (const med of medsList) {
         let timeToSave = "08:00";
         const period = med.time.toLowerCase();
-        if (period.includes("trưa")) timeToSave = "12:00";
-        else if (period.includes("tối")) timeToSave = "20:00";
-        else if (period.includes("ngủ")) timeToSave = "22:00";
+        if (period.includes("trÆ°a")) timeToSave = "12:00";
+        else if (period.includes("tá»‘i")) timeToSave = "20:00";
+        else if (period.includes("ngá»§")) timeToSave = "22:00";
         
         await addMedicationAndReminder(
           linkedPatientId,
@@ -122,12 +122,12 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
         );
       }
       
-      alert(`Đã lưu thành công ${medsList.length} loại thuốc!`);
+      alert(`ÄÃ£ lÆ°u thÃ nh cÃ´ng ${medsList.length} loáº¡i thuá»‘c!`);
       handleClose();
       onSuccess();
     } catch (error) {
       console.error(error);
-      alert("Có lỗi xảy ra khi lưu. Vui lòng thử lại.");
+      alert("CÃ³ lá»—i xáº£y ra khi lÆ°u. Vui lÃ²ng thá»­ láº¡i.");
     } finally {
       setIsSaving(false);
     }
@@ -144,8 +144,8 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
               <Scan size={20} strokeWidth={2.5} />
             </div>
             <div>
-              <h3 className="font-bold text-base text-[#1A2B4B]">Quét Đơn Thuốc AI</h3>
-              <p className="text-gray-400 text-xs">Phân tích bằng Gemini Vision</p>
+              <h3 className="font-bold text-base text-[#1A2B4B]">QuÃ©t ÄÆ¡n Thuá»‘c AI</h3>
+              <p className="text-gray-400 text-xs">PhÃ¢n tÃ­ch báº±ng Gemini Vision</p>
             </div>
           </div>
           <button
@@ -173,7 +173,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
               {isScanning ? (
                 <div className="flex flex-col items-center justify-center text-primary gap-4">
                   <Loader2 size={48} className="animate-spin" />
-                  <p className="font-bold">AI đang phân tích đơn thuốc...</p>
+                  <p className="font-bold">AI Ä‘ang phÃ¢n tÃ­ch Ä‘Æ¡n thuá»‘c...</p>
                 </div>
               ) : (
                 <button 
@@ -184,8 +184,8 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                     <Camera size={40} />
                   </div>
                   <div className="text-center">
-                    <span className="font-bold text-lg block">Chụp Đơn Thuốc</span>
-                    <span className="text-sm opacity-80 mt-1 block">Hoặc tải ảnh từ thư viện</span>
+                    <span className="font-bold text-lg block">Chá»¥p ÄÆ¡n Thuá»‘c</span>
+                    <span className="text-sm opacity-80 mt-1 block">Hoáº·c táº£i áº£nh tá»« thÆ° viá»‡n</span>
                   </div>
                 </button>
               )}
@@ -193,8 +193,8 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
           ) : (
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-center mb-2">
-                <span className="font-bold text-[#1A2B4B]">Tìm thấy {medsList.length} loại thuốc</span>
-                <button onClick={resetState} className="text-xs text-primary font-semibold">Chụp lại</button>
+                <span className="font-bold text-[#1A2B4B]">TÃ¬m tháº¥y {medsList.length} loáº¡i thuá»‘c</span>
+                <button onClick={resetState} className="text-xs text-primary font-semibold">Chá»¥p láº¡i</button>
               </div>
               
               {medsList.map((med, idx) => (
@@ -208,7 +208,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                   
                   <div className="space-y-3">
                     <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Tên thuốc</label>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">TÃªn thuá»‘c</label>
                       <input 
                         value={med.name} 
                         onChange={(e) => updateMed(idx, 'name', e.target.value)}
@@ -218,7 +218,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                     
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Liều lượng</label>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Liá»u lÆ°á»£ng</label>
                         <input 
                           value={med.dosage} 
                           onChange={(e) => updateMed(idx, 'dosage', e.target.value)}
@@ -226,7 +226,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Buổi uống</label>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Buá»•i uá»‘ng</label>
                         <input 
                           value={med.time} 
                           onChange={(e) => updateMed(idx, 'time', e.target.value)}
@@ -236,7 +236,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                     </div>
                     
                     <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Cách dùng</label>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">CÃ¡ch dÃ¹ng</label>
                       <input 
                         value={med.instructions} 
                         onChange={(e) => updateMed(idx, 'instructions', e.target.value)}
@@ -259,7 +259,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
               className="w-full bg-primary hover:bg-blue-700 disabled:opacity-70 text-white py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 shadow-lg shadow-primary/25 transition-all"
             >
               {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Check size={20} />}
-              {isSaving ? "Đang lưu tất cả..." : "Xác nhận & Lưu tất cả"}
+              {isSaving ? "Äang lÆ°u táº¥t cáº£..." : "XÃ¡c nháº­n & LÆ°u táº¥t cáº£"}
             </button>
           </div>
         )}
@@ -268,3 +268,4 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
     </div>
   );
 }
+

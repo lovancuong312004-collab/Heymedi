@@ -12,12 +12,15 @@ import {
   Bot
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { useFamily } from "../contexts/FamilyContext";
 
 interface Props {
   onOpenCall: () => void;
 }
 
 export default function NotificationsScreen({ onOpenCall }: Props) {
+  const { patientInfo } = useFamily();
+  const patientName = patientInfo?.name || "Người bệnh";
   const [filter, setFilter] = useState<"all" | "overdue" | "taken" | "system">("all");
 
   const [notifications, setNotifications] = useState([
@@ -25,7 +28,7 @@ export default function NotificationsScreen({ onOpenCall }: Props) {
       id: "1",
       type: "overdue",
       title: "CẢNH BÁO: Quá giờ uống thuốc!",
-      message: "Ông Minh chưa xác nhận uống Metformin 500mg (cữ trưa 12:00). Đã quá giờ 35 phút!",
+      message: `${patientName} chưa xác nhận uống Metformin 500mg (cữ trưa 12:00). Đã quá giờ 35 phút!`,
       timestamp: "12:35 hôm nay",
       isUnread: true,
       actionable: true
@@ -34,7 +37,7 @@ export default function NotificationsScreen({ onOpenCall }: Props) {
       id: "2",
       type: "taken",
       title: "Đã uống thuốc đúng giờ",
-      message: "Ông Minh đã uống xong Amlodipine 5mg lúc 08:05 theo đúng lịch.",
+      message: `${patientName} đã uống xong Amlodipine 5mg lúc 08:05 theo đúng lịch.`,
       timestamp: "08:05 hôm nay",
       isUnread: true,
       actionable: false
@@ -43,26 +46,26 @@ export default function NotificationsScreen({ onOpenCall }: Props) {
       id: "3",
       type: "system",
       title: "Trợ lý AI tổng kết buổi sáng",
-      message: "Hôm nay Ông Minh có 4 cữ thuốc cần uống. Nhiệt độ tăng cao, nhắc ông uống thêm nước.",
+      message: `Hôm nay ${patientName} có 4 cữ thuốc cần uống. Nhiệt độ tăng cao, nhắc người bệnh uống thêm nước.`,
       timestamp: "07:00 hôm nay",
       isUnread: false,
       actionable: false
     },
     {
       id: "4",
-      type: "overdue",
-      title: "Cữ tối qua bị trễ giờ",
-      message: "Atorvastatin 10mg đã bị trễ hơn 40 phút vào tối qua trước khi được uống bù.",
-      timestamp: "20:45 hôm qua",
+      type: "taken",
+      title: "Đã uống thuốc (Trễ)",
+      message: `Hôm qua, ${patientName} đã uống Vitamin B1 lúc 22:45 (trễ 45 phút so với lịch 22:00).`,
+      timestamp: "Hôm qua",
       isUnread: false,
       actionable: false
     },
     {
       id: "5",
       type: "system",
-      title: "Cảnh báo số lượng thuốc sắp hết",
-      message: "Hộp thuốc Metformin 500mg của Ông Minh chỉ còn lại 4 viên. Vui lòng mua bổ sung sớm.",
-      timestamp: "16:00 hôm qua",
+      title: "Nhắc nhở: Sắp hết thuốc",
+      message: `Hộp thuốc Metformin 500mg của ${patientName} chỉ còn lại 4 viên. Vui lòng mua bổ sung sớm.`,
+      timestamp: "Hôm qua",
       isUnread: false,
       actionable: false
     }
@@ -198,7 +201,7 @@ export default function NotificationsScreen({ onOpenCall }: Props) {
                       className="flex-1 bg-danger hover:bg-danger/90 active:scale-95 text-white py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-[0_4px_10px_rgba(220,38,38,0.25)] transition-all cursor-pointer"
                     >
                       <Phone size={14} className="fill-white" />
-                      GỌI ĐIỆN NHẮC ÔNG MINH NGAY
+                      GỌI ĐIỆN NHẮC {patientName.toUpperCase()} NGAY
                     </button>
                   </div>
                 )}

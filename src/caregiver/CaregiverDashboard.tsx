@@ -22,7 +22,7 @@ export default function CaregiverDashboard({
 }: Props) {
   const caregiverName = user?.user_metadata?.full_name || "Caregiver";
   
-  const { linkedPatientId: patientId, patientName, isLoading: isCheckingLink } = useFamily();
+  const { linkedPatientId: patientId, patientName, patientInfo, isLoading: isCheckingLink } = useFamily();
   console.log("=== DEBUG DASHBOARD: Current Patient ID ===", patientId);
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -143,11 +143,18 @@ export default function CaregiverDashboard({
         </div>
 
         {/* Cared Person Pill */}
-        <div className="bg-white border border-gray-100 shadow-sm rounded-full py-1.5 px-3 flex items-center gap-2 cursor-pointer active:scale-95 transition-transform">
-          <div className="w-6 h-6 rounded-full bg-blue-100 overflow-hidden shrink-0">
-            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face" alt="Avatar" className="w-full h-full object-cover" />
+        <div 
+          onClick={() => onNavigateTab("family")}
+          className="bg-white border border-gray-100 shadow-sm rounded-full py-1.5 px-3 flex items-center gap-2 cursor-pointer active:scale-95 transition-transform"
+        >
+          <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs overflow-hidden shrink-0">
+            {patientInfo?.avatar_url ? (
+              <img src={patientInfo.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              (patientInfo?.name || "N")[0].toUpperCase()
+            )}
           </div>
-          <span className="text-xs font-bold text-[#1a2b4b] max-w-[80px] truncate">{patientName}</span>
+          <span className="text-xs font-bold text-[#1a2b4b] max-w-[80px] truncate">{patientInfo?.name || "Người bệnh"}</span>
         </div>
       </div>
 

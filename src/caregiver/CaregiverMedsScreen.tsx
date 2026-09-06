@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import { cn } from "../lib/utils";
+import { useFamily } from "../contexts/FamilyContext";
 
 interface Props {
   onOpenCall: () => void;
@@ -23,6 +24,8 @@ export default function CaregiverMedsScreen({
   onOpenScan,
   onOpenAddMed
 }: Props) {
+  const { patientInfo } = useFamily();
+  const patientName = patientInfo?.name || "Người bệnh";
   const [currentDate, setCurrentDate] = useState(new Date());
   const [activeFilter, setActiveFilter] = useState("Tất cả");
 
@@ -100,7 +103,7 @@ export default function CaregiverMedsScreen({
   };
 
   const handleDelete = (id: string, name: string) => {
-    if (confirm(`Xóa thuốc "${name}" khỏi đơn của Ông Minh?`)) {
+    if (confirm(`Xóa thuốc "${name}" khỏi đơn của ${patientName}?`)) {
       setMedsList((prev) => prev.filter((m) => m.id !== id));
     }
   };
@@ -110,7 +113,7 @@ export default function CaregiverMedsScreen({
       
       {/* Header */}
       <div className="flex justify-between items-center mb-4 relative mt-2">
-        <h1 className="text-2xl font-bold text-[#1a2b4b] w-full text-center">Lịch thuốc Ông Minh</h1>
+        <h1 className="text-2xl font-bold text-[#1a2b4b] w-full text-center">Lịch thuốc {patientName}</h1>
         <button 
           onClick={onOpenAddMed}
           className="absolute right-0 flex items-center gap-1 text-primary font-bold text-sm"
@@ -146,7 +149,7 @@ export default function CaregiverMedsScreen({
         <div className="bg-[#FFF0F0] border border-[#FFD6D6] rounded-2xl p-3.5 flex items-center justify-between text-xs mt-3 shadow-sm">
           <div className="flex items-center gap-2 text-danger font-medium">
             <AlertCircle size={18} className="shrink-0" />
-            <span>Thuốc <b>Metformin 500mg</b> của Ông Minh chỉ còn <b>4 viên</b>!</span>
+            <span>Thuốc <b>Metformin 500mg</b> của {patientName} chỉ còn <b>4 viên</b>!</span>
           </div>
           <button
             onClick={() => alert("Đã thêm thuốc vào danh mục cần mua")}
@@ -254,7 +257,7 @@ export default function CaregiverMedsScreen({
             <span className="font-extrabold text-xl">QUÉT THUỐC (AI)</span>
           </div>
           <span className="text-[#1a2b4b]/80 text-sm font-semibold mt-1">
-            Quét hộp thuốc để thêm nhanh cho Ông Minh
+            Quét hộp thuốc để thêm nhanh cho {patientName}
           </span>
         </button>
       </div>
