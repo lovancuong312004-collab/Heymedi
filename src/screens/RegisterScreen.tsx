@@ -15,6 +15,7 @@ export default function RegisterScreen({ onDone, onBack }: Props) {
   // Thông tin cơ bản
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   
@@ -31,7 +32,7 @@ export default function RegisterScreen({ onDone, onBack }: Props) {
   const [errorMsg, setErrorMsg] = useState("");
 
   const handleInfoNext = () => {
-    if (!name.trim() || !phone.trim() || !password.trim()) return;
+    if (!name.trim() || !phone.trim() || !email.trim() || !password.trim()) return;
     setStep("profile");
   };
 
@@ -50,20 +51,16 @@ export default function RegisterScreen({ onDone, onBack }: Props) {
     setErrorMsg("");
     
     try {
-      const inputVal = phone.trim();
-      const isEmail = inputVal.includes('@');
-      const authEmail = isEmail ? inputVal : `${inputVal.replace(/\s+/g, '')}@heymedi.com`;
-      
       const roleStr = selectedRole === "elderly" ? "ELDERLY" : "CAREGIVER";
       
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: authEmail,
+        email: email.trim(),
         password: password,
         options: {
           data: {
             full_name: name,
             role: roleStr,
-            phone: phone,
+            phone: phone.trim(),
             dob: dob,
             gender: gender,
             weight: weight,
@@ -79,14 +76,14 @@ export default function RegisterScreen({ onDone, onBack }: Props) {
         return;
       }
 
-      // Cố gắng Insert vào bảng users (Không báo lỗi cứng nếu bảng chưa tồn tại)
-      supabase.from('users').insert({
+      // Lưu vào public.profiles để tra cứu khi đăng nhập bằng SĐT
+      supabase.from('profiles').insert({
         id: signUpData.user?.id,
-        phone: phone,
-        role: roleStr,
+        phone: phone.trim(),
+        email: email.trim(),
         full_name: name
       }).then(({ error: dbError }) => {
-        if (dbError) console.error("Lỗi khi lưu DB (Bảng users có thể chưa tạo):", dbError);
+        if (dbError) console.error("Lỗi khi lưu DB (Bảng profiles có thể chưa tạo):", dbError);
       });
 
       onDone(selectedRole);
@@ -148,16 +145,31 @@ export default function RegisterScreen({ onDone, onBack }: Props) {
               </div>
             </div>
 
-            {/* Phone/Email */}
+            {/* Email */}
             <div>
-              <label className="text-sm font-bold text-gray-600 mb-1.5 block">Email hoặc Số điện thoại</label>
+              <label className="text-sm font-bold text-gray-600 mb-1.5 block">Email (Dùng để lấy lại mật khẩu)</label>
+              <div className="flex items-center border-2 border-gray-200 rounded-2xl px-4 py-3.5 gap-3 focus-within:border-primary transition-colors bg-gray-50/50">
+                <User size={20} className="text-gray-400 shrink-0" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="VD: nguyenvana@gmail.com"
+                  className="flex-1 bg-transparent text-[#1A2B4B] font-semibold text-base outline-none placeholder:text-gray-400 placeholder:font-normal"
+                />
+              </div>
+            </div>
+
+            {/* Phone */}
+            <div>
+              <label className="text-sm font-bold text-gray-600 mb-1.5 block">Số điện thoại</label>
               <div className="flex items-center border-2 border-gray-200 rounded-2xl px-4 py-3.5 gap-3 focus-within:border-primary transition-colors bg-gray-50/50">
                 <Phone size={20} className="text-gray-400 shrink-0" />
                 <input
-                  type="text"
+                  type="tel"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  placeholder="Nhập Email hoặc SĐT..."
+                  placeholder="Nhập số điện thoại..."
                   className="flex-1 bg-transparent text-[#1A2B4B] font-semibold text-base outline-none placeholder:text-gray-400 placeholder:font-normal"
                 />
               </div>

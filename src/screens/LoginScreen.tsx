@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Phone, Eye, EyeOff, Lock, ArrowRight, UserPlus } from "lucide-react";
 import { supabase } from '../lib/supabase';
+import ForgotPasswordModal from "./ForgotPasswordModal";
 
 interface Props {
   onLogin: (role: "elderly" | "caregiver") => void;
@@ -13,6 +14,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isForgotOpen, setIsForgotOpen] = useState(false);
 
   const handleLogin = async () => {
     if (!phone.trim() || !password.trim()) {
@@ -26,7 +28,20 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
     try {
       const inputVal = phone.trim();
       const isEmail = inputVal.includes('@');
-      const authEmail = isEmail ? inputVal : `${inputVal.replace(/\s+/g, '')}@heymedi.com`;
+      let authEmail = inputVal;
+      
+      // Nếu không phải email, giả định là số điện thoại và gọi RPC lấy email tương ứng
+      if (!isEmail) {
+        const { data: emailFromDb, error: rpcError } = await supabase
+          .rpc('get_email_by_phone', { p_phone: inputVal });
+          
+        if (rpcError || !emailFromDb) {
+          setError('Không tìm thấy tài khoản với số điện thoại này.');
+          setLoading(false);
+          return;
+        }
+        authEmail = emailFromDb;
+      }
       
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: authEmail,
@@ -37,7 +52,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
         if (signInError.message === 'Email not confirmed') {
           setError('Lỗi: Bạn chưa tắt tính năng Xác nhận Email trên Supabase!');
         } else if (signInError.message === 'Invalid login credentials') {
-          setError('Sai số điện thoại hoặc mật khẩu.');
+          setError('Sai thông tin đăng nhập.');
         } else {
           setError(`Lỗi từ Supabase: ${signInError.message}`);
         }
@@ -118,7 +133,12 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
 
         {/* Forgot password */}
         <div className="flex justify-end mb-6">
-          <button className="text-[#1A56DB] text-[15px] font-bold">Quên mật khẩu?</button>
+          <button 
+            onClick={() => setIsForgotOpen(true)}
+            className="text-[#1A56DB] text-[15px] font-bold"
+          >
+            Quên mật khẩu?
+          </button>
         </div>
 
         {/* Login button */}
@@ -130,6 +150,11 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
           {loading ? 'Đang xử lý...' : 'Đăng nhập'}
           {!loading && <ArrowRight size={20} />}
         </button>
+
+        <ForgotPasswordModal 
+          isOpen={isForgotOpen} 
+          onClose={() => setIsForgotOpen(false)} 
+        />
 
         {/* Divider Social */}
         <div className="flex items-center gap-4 my-6">
