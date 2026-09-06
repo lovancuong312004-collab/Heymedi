@@ -15,7 +15,7 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
         .from('family_links')
         .delete()
         .eq('caregiver_id', user?.id)
-        .eq('elderly_id', linkedPatientId);
+        .eq('patient_id', linkedPatientId);
       
       await refreshLink();
     } catch (e) {

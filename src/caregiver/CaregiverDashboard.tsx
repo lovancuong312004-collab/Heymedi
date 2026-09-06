@@ -22,6 +22,7 @@ export default function CaregiverDashboard({
   const caregiverName = user?.user_metadata?.full_name || "Caregiver";
   
   const { linkedPatientId: patientId, patientName, isLoading: isCheckingLink } = useFamily();
+  console.log("=== DEBUG DASHBOARD: Current Patient ID ===", patientId);
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [schedule, setSchedule] = useState<Reminder[]>([]);

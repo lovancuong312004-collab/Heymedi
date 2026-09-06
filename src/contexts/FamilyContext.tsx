@@ -16,21 +16,25 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchLink = async (userId: string) => {
+    console.log("=== DEBUG CONTEXT: User ===", userId);
     setIsLoading(true);
     try {
       // Use maybeSingle() instead of single() to avoid throwing error when 0 rows found
       const { data, error } = await supabase
         .from("family_links")
-        .select("elderly_id, elderly_name")
+        .select("patient_id")
         .eq("caregiver_id", userId)
         .limit(1)
         .maybeSingle();
 
+      console.log("=== DEBUG CONTEXT: Query Data ===", data, "Error:", error);
+
       if (error) throw error;
 
-      if (data && data.elderly_id) {
-        setLinkedPatientId(data.elderly_id);
-        setPatientName(data.elderly_name || "Người bệnh");
+      if (data && data.patient_id) {
+        setLinkedPatientId(data.patient_id);
+        // Fallback name since we only select patient_id now
+        setPatientName("Người bệnh");
       } else {
         setLinkedPatientId(null);
         setPatientName(null);
@@ -80,6 +84,10 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       await fetchLink(session.user.id);
     }
   };
+
+  useEffect(() => {
+    console.log("=== DEBUG CONTEXT: Patient ID ===", linkedPatientId);
+  }, [linkedPatientId]);
 
   return (
     <FamilyContext.Provider value={{ linkedPatientId, patientName, isLoading, refreshLink }}>
