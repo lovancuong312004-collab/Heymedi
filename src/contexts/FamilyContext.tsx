@@ -10,25 +10,23 @@ interface FamilyContextType {
 
 const FamilyContext = createContext<FamilyContextType | undefined>(undefined);
 
-export function FamilyProvider({ children, userId }: { children: ReactNode; userId: string }) {
+export function FamilyProvider({ children }: { children: ReactNode }) {
   const [linkedPatientId, setLinkedPatientId] = useState<string | null>(null);
   const [patientName, setPatientName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchLink = async () => {
-    if (!userId) {
-      setIsLoading(false);
-      return;
-    }
-    
+  const fetchLink = async (userId: string) => {
     setIsLoading(true);
     try {
-      const { data } = await supabase
+      // Use maybeSingle() instead of single() to avoid throwing error when 0 rows found
+      const { data, error } = await supabase
         .from("family_links")
         .select("elderly_id, elderly_name")
         .eq("caregiver_id", userId)
         .limit(1)
-        .single();
+        .maybeSingle();
+
+      if (error) throw error;
 
       if (data && data.elderly_id) {
         setLinkedPatientId(data.elderly_id);
@@ -47,11 +45,44 @@ export function FamilyProvider({ children, userId }: { children: ReactNode; user
   };
 
   useEffect(() => {
-    fetchLink();
-  }, [userId]);
+    let mounted = true;
+    
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id && mounted) {
+        await fetchLink(session.user.id);
+      } else if (mounted) {
+        setIsLoading(false);
+      }
+    };
+    
+    init();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user?.id && mounted) {
+        fetchLink(session.user.id);
+      } else if (mounted) {
+        setLinkedPatientId(null);
+        setPatientName(null);
+        setIsLoading(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const refreshLink = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user?.id) {
+      await fetchLink(session.user.id);
+    }
+  };
 
   return (
-    <FamilyContext.Provider value={{ linkedPatientId, patientName, isLoading, refreshLink: fetchLink }}>
+    <FamilyContext.Provider value={{ linkedPatientId, patientName, isLoading, refreshLink }}>
       {children}
     </FamilyContext.Provider>
   );

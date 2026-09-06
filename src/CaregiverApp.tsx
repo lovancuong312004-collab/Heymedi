@@ -29,7 +29,7 @@ type CaregiverTab = "dashboard" | "meds" | "family" | "notifications" | "reports
 
 export default function CaregiverApp({ user, onLogout }: Props) {
   return (
-    <FamilyProvider userId={user?.id}>
+    <FamilyProvider>
       <CaregiverAppContent user={user} onLogout={onLogout} />
     </FamilyProvider>
   );
