@@ -22,8 +22,113 @@
   }
 
   body {
-    @apply bg-[#F4F7FB] text-gray-900;
+    @apply bg-[#F4F7FB] text-gray-900 transition-colors duration-200;
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  /* Chế độ tối Dark Mode toàn diện cho cả 2 giao diện */
+  html.dark body {
+    background-color: #0B1329 !important;
+    color: #F8FAFC !important;
+  }
+
+  html.dark .bg-\[\#F4F7FB\] {
+    background-color: #0B1329 !important;
+  }
+
+  html.dark .bg-white {
+    background-color: #152238 !important;
+    color: #F1F5F9;
+  }
+
+  html.dark .bg-white\/95 {
+    background-color: rgba(21, 34, 56, 0.95) !important;
+  }
+
+  html.dark .text-\[\#1a2b4b\],
+  html.dark .text-\[\#1A2B4B\] {
+    color: #F1F5F9 !important;
+  }
+
+  html.dark .text-gray-900 {
+    color: #F8FAFC !important;
+  }
+
+  html.dark .text-gray-800 {
+    color: #E2E8F0 !important;
+  }
+
+  html.dark .text-gray-700 {
+    color: #CBD5E1 !important;
+  }
+
+  html.dark .text-gray-600 {
+    color: #94A3B8 !important;
+  }
+
+  html.dark .text-gray-500 {
+    color: #94A3B8 !important;
+  }
+
+  html.dark .border-gray-100 {
+    border-color: #1E2D4A !important;
+  }
+
+  html.dark .border-gray-200 {
+    border-color: #27395C !important;
+  }
+
+  html.dark .border-gray-300 {
+    border-color: #334B75 !important;
+  }
+
+  html.dark .bg-gray-50,
+  html.dark .bg-gray-50\/60,
+  html.dark .bg-gray-50\/70,
+  html.dark .bg-gray-50\/90 {
+    background-color: #121C30 !important;
+  }
+
+  html.dark .bg-gray-100 {
+    background-color: #1E2D4A !important;
+    color: #E2E8F0 !important;
+  }
+
+  html.dark .bg-gray-200,
+  html.dark .bg-gray-200\/80 {
+    background-color: #223252 !important;
+  }
+
+  html.dark .bg-blue-50,
+  html.dark .bg-blue-50\/50,
+  html.dark .bg-blue-50\/60,
+  html.dark .bg-blue-50\/80,
+  html.dark .bg-blue-50\/90 {
+    background-color: #11254D !important;
+    color: #BFDBFE !important;
+  }
+
+  html.dark .bg-emerald-50,
+  html.dark .bg-emerald-50\/60,
+  html.dark .bg-emerald-50\/70,
+  html.dark .bg-emerald-50\/90 {
+    background-color: #06402B !important;
+    color: #A7F3D0 !important;
+  }
+
+  html.dark .bg-amber-50,
+  html.dark .bg-amber-50\/60,
+  html.dark .bg-amber-50\/70,
+  html.dark .bg-amber-50\/80 {
+    background-color: #422006 !important;
+    color: #FDE68A !important;
+  }
+
+  html.dark .bg-red-50,
+  html.dark .bg-red-50\/60,
+  html.dark .bg-rose-50 {
+    background-color: #450A0A !important;
+    color: #FECDD3 !important;
   }
 }
 

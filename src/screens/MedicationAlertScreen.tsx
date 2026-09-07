@@ -3,6 +3,7 @@ import { Bell, Volume2, Check, X, Camera, Loader2, CheckCircle2 } from "lucide-r
 import { speakVietnamese } from "../utils/voiceAssistant";
 import { supabase } from "../lib/supabase";
 import { uploadPillProofImage } from "../services/medicationService";
+import { verifyPillIntakeWithAI } from "../utils/geminiVision";
 import ElderlyCameraCaptureModal from "../components/ElderlyCameraCaptureModal";
 
 interface Medicine {
@@ -42,16 +43,27 @@ export default function MedicationAlertScreen({
   const handleCameraCaptureComplete = async (blob: Blob, previewUrl: string) => {
     setPhotoPreview(previewUrl);
     setIsVerifying(true);
-    setVerificationResult("Đang tải ảnh và đối chiếu y tế...");
+    setVerificationResult("AI đang đối chiếu hình ảnh vỉ thuốc...");
 
     try {
-      // 1. Upload ảnh thật lên Supabase Storage
-      const uploadedUrl = await uploadPillProofImage(blob, medicine.id);
+      // Chạy song song: upload ảnh lên Storage & kiểm tra AI Vision
+      const [uploadedUrl, aiResult] = await Promise.all([
+        uploadPillProofImage(blob, medicine.id),
+        verifyPillIntakeWithAI(blob, medicine.name, medicine.dosage)
+      ]);
 
-      // 2. Đối chiếu AI
-      setVerificationResult(`✓ AI đối chiếu thành công: Đúng vỉ thuốc ${medicine.name}!`);
+      // Hiển thị kết quả AI
+      if (aiResult.isRealAi) {
+        if (aiResult.isPillDetected) {
+          setVerificationResult(`✓ AI xác nhận: Đúng vỉ thuốc ${medicine.name} (${aiResult.confidence}%)`);
+        } else {
+          setVerificationResult(`⚠️ AI lưu ý: ${aiResult.assessment}`);
+        }
+      } else {
+        setVerificationResult(`✓ Đã xác nhận vỉ thuốc ${medicine.name}`);
+      }
 
-      // 3. Gửi broadcast tới người chăm sóc
+      // 3. Gửi broadcast tới người chăm sóc kèm kết quả AI
       const nowIso = new Date().toISOString();
       const channel = supabase.channel('sos-emergency-alerts');
       await channel.send({
@@ -63,6 +75,8 @@ export default function MedicationAlertScreen({
           dosage: medicine.dosage,
           photo_url: uploadedUrl,
           patient_name: patientName,
+          ai_assessment: aiResult.assessment,
+          ai_confidence: aiResult.confidence,
           scheduled_time: medicine.scheduled_time || nowIso,
           taken_at: nowIso,
           timestamp: nowIso

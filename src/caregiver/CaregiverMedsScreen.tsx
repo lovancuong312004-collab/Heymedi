@@ -6,6 +6,7 @@ import {
   Scan, 
   Phone, 
   Trash2, 
+  Edit3,
   Loader2, 
   CalendarCheck,
   Pill,
@@ -15,7 +16,8 @@ import {
   HeartPulse,
   ShieldCheck,
   Camera,
-  X
+  X,
+  Check
 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import { cn } from "../lib/utils";
@@ -25,8 +27,10 @@ import {
   getScheduleDaysSummary, 
   markAsTaken, 
   deleteMedication,
+  updateMedicationCourse,
   getActiveMedications,
   getDiagnosisRecords,
+  saveDiagnosisRecord,
   deleteDiagnosisRecord,
   getMedicationTimingOffset,
   type Reminder,
@@ -73,6 +77,31 @@ export default function CaregiverMedsScreen({
     medName: string;
     timeStr: string;
   } | null>(null);
+
+  // In-app Modal xác nhận hủy toàn bộ lộ trình thuốc (thay thế window.confirm)
+  const [confirmCourseDelete, setConfirmCourseDelete] = useState<{
+    medId: string;
+    medName: string;
+  } | null>(null);
+
+  // Modal Sửa lộ trình thuốc
+  const [editingCourse, setEditingCourse] = useState<ActiveMedicationItem | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDosage, setEditDosage] = useState("");
+  const [editInstructions, setEditInstructions] = useState("");
+  const [editDailyTimes, setEditDailyTimes] = useState<string[]>(["08:00", "20:00"]);
+  const [newTimeInput, setNewTimeInput] = useState("12:00");
+  const [editDurationDays, setEditDurationDays] = useState(7);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Modal Thêm chẩn đoán / Tiền sử bệnh
+  const [isAddingDiagnosis, setIsAddingDiagnosis] = useState(false);
+  const [newDiagHospital, setNewDiagHospital] = useState("");
+  const [newDiagTitle, setNewDiagTitle] = useState("");
+  const [newDiagDoctor, setNewDiagDoctor] = useState("");
+  const [newDiagDate, setNewDiagDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [newDiagRevisitDays, setNewDiagRevisitDays] = useState(30);
+  const [isSavingDiag, setIsSavingDiag] = useState(false);
 
   // Modal xem ảnh minh chứng vỉ thuốc đã uống
   const [viewingPhotoUrl, setViewingPhotoUrl] = useState<{
@@ -204,28 +233,94 @@ export default function CaregiverMedsScreen({
     }
   };
 
-  // 2. Xóa toàn bộ thuốc & mọi cữ nhắc trong toàn bộ lộ trình
-  const handleDeleteEntireCourse = async (medicationId: string, medName: string) => {
-    if (!confirm(`⚠️ HỦY TOÀN BỘ LỘ TRÌNH THUỐC?\n\nBạn có chắc chắn muốn hủy thuốc "${medName}"? Thao tác này sẽ xóa thuốc khỏi hệ thống và GỠ BỎ TẤT CẢ các lần nhắc chuông trên mọi ngày!`)) {
+  // 2. Mở modal sửa lộ trình
+  const handleOpenEditCourse = (med: ActiveMedicationItem) => {
+    setEditingCourse(med);
+    setEditName(med.name || "");
+    setEditDosage(med.dosage || "");
+    setEditInstructions(med.instructions || "");
+    setEditDailyTimes(["08:00", "20:00"]);
+    setEditDurationDays(7);
+  };
+
+  const handleSaveEditCourse = async () => {
+    if (!editingCourse || !patientId || !editName.trim()) {
+      alert("Vui lòng nhập tên thuốc!");
       return;
     }
+    try {
+      setIsSavingEdit(true);
+      await updateMedicationCourse({
+        medicationId: editingCourse.id,
+        patientId,
+        name: editName.trim(),
+        dosage: editDosage.trim(),
+        instructions: editInstructions.trim(),
+        dailyTimes: editDailyTimes.length > 0 ? editDailyTimes : undefined,
+        durationDays: editDurationDays
+      });
+      setEditingCourse(null);
+      await Promise.all([loadData(), loadCourseData()]);
+      alert("Đã cập nhật lộ trình thuốc thành công!");
+    } catch (err) {
+      console.error("Failed to update medication course:", err);
+      alert("Không thể cập nhật lộ trình. Vui lòng thử lại!");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
+  // 3. Thực hiện xóa toàn bộ thuốc & mọi cữ nhắc
+  const handleExecuteDeleteCourse = async (medicationId: string, _medName?: string) => {
     try {
       setDeletingMedId(medicationId);
-      await deleteMedication(medicationId);
+      // Optimistic update
+      setActiveMeds(prev => prev.filter(m => m.id !== medicationId));
+      setSchedule(prev => prev.filter(r => r.medication_id !== medicationId));
+      setConfirmCourseDelete(null);
       setDeleteConfirmModal(null);
+
+      await deleteMedication(medicationId);
       await Promise.all([loadData(), loadCourseData()]);
-      alert(`Đã xóa toàn bộ lộ trình thuốc "${medName}" thành công!`);
     } catch (err) {
       console.error("Failed to delete entire course:", err);
       alert("Không thể xóa lộ trình thuốc. Vui lòng thử lại!");
+      loadCourseData();
     } finally {
       setDeletingMedId(null);
     }
   };
 
+  // 4. Thêm chẩn đoán vào tiền sử bệnh
+  const handleSaveNewDiagnosis = async () => {
+    if (!patientId || !newDiagTitle.trim()) {
+      alert("Vui lòng nhập tên bệnh lý hoặc chẩn đoán!");
+      return;
+    }
+    try {
+      setIsSavingDiag(true);
+      await saveDiagnosisRecord(patientId, {
+        diagnosis: newDiagTitle.trim(),
+        hospitalName: newDiagHospital.trim() || "Bệnh viện / Phòng khám",
+        doctorName: newDiagDoctor.trim() || "Bác sĩ điều trị",
+        date: newDiagDate ? new Date(newDiagDate).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN'),
+        revisitDays: Number(newDiagRevisitDays) || 30
+      });
+      setDiagnoses(getDiagnosisRecords(patientId));
+      setIsAddingDiagnosis(false);
+      setNewDiagTitle("");
+      setNewDiagHospital("");
+      setNewDiagDoctor("");
+    } catch (err) {
+      console.error("Failed to save diagnosis:", err);
+      alert("Không thể lưu chẩn đoán. Vui lòng thử lại!");
+    } finally {
+      setIsSavingDiag(false);
+    }
+  };
+
   const handleDeleteDiagnosis = (diagId: string) => {
-    if (!patientId || !confirm("Xóa bản ghi chẩn đoán này khỏi tiền sử bệnh?")) return;
+    if (!patientId) return;
     deleteDiagnosisRecord(patientId, diagId);
     setDiagnoses(getDiagnosisRecords(patientId));
   };
@@ -663,20 +758,32 @@ export default function CaregiverMedsScreen({
                           </p>
                         </div>
 
-                        {/* Nút Xóa toàn bộ lộ trình thuốc 1 chạm */}
-                        <button
-                          onClick={() => handleDeleteEntireCourse(med.id, med.name)}
-                          disabled={isDeleting}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 active:scale-95 transition-all cursor-pointer shrink-0"
-                          title="Hủy thuốc và xóa tất cả cữ nhắc trên mọi ngày"
-                        >
-                          {isDeleting ? (
-                            <Loader2 size={13} className="animate-spin" />
-                          ) : (
-                            <Trash2 size={13} />
-                          )}
-                          <span>Hủy lộ trình</span>
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {/* Nút Sửa lộ trình */}
+                          <button
+                            onClick={() => handleOpenEditCourse(med)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-primary bg-blue-50 hover:bg-blue-100 border border-blue-200 active:scale-95 transition-all cursor-pointer shadow-2xs"
+                            title="Chỉnh sửa liều lượng, chỉ định, và giờ nhắc"
+                          >
+                            <Edit3 size={13} />
+                            <span>Sửa</span>
+                          </button>
+
+                          {/* Nút Hủy toàn bộ lộ trình thuốc 1 chạm qua In-App Modal */}
+                          <button
+                            onClick={() => setConfirmCourseDelete({ medId: med.id, medName: med.name })}
+                            disabled={isDeleting}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 active:scale-95 transition-all cursor-pointer shadow-2xs"
+                            title="Hủy thuốc và xóa tất cả cữ nhắc trên mọi ngày"
+                          >
+                            {isDeleting ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={13} />
+                            )}
+                            <span>Hủy</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Hướng dẫn & Ghi chú lộ trình */}
@@ -725,12 +832,16 @@ export default function CaregiverMedsScreen({
               <div className="flex items-center gap-2">
                 <HeartPulse size={18} className="text-rose-500" />
                 <h3 className="font-extrabold text-[#1a2b4b] text-base">
-                  Tiền sử bệnh & Chẩn đoán từ đơn thuốc ({diagnoses.length})
+                  Tiền sử bệnh & Chẩn đoán ({diagnoses.length})
                 </h3>
               </div>
-              <span className="text-xs font-semibold text-gray-400">
-                Lưu từ quét AI
-              </span>
+              <button
+                onClick={() => setIsAddingDiagnosis(true)}
+                className="flex items-center gap-1 text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-2.5 py-1 rounded-xl active:scale-95 transition-all cursor-pointer shadow-2xs"
+              >
+                <Plus size={13} strokeWidth={3} />
+                <span>Thêm chẩn đoán</span>
+              </button>
             </div>
 
             <div className="p-4 flex flex-col gap-3">
@@ -826,7 +937,12 @@ export default function CaregiverMedsScreen({
               {deleteConfirmModal.medicationId && (
                 <button
                   type="button"
-                  onClick={() => handleDeleteEntireCourse(deleteConfirmModal.medicationId!, deleteConfirmModal.medName)}
+                  onClick={() => {
+                    const medId = deleteConfirmModal.medicationId!;
+                    const medName = deleteConfirmModal.medName;
+                    setDeleteConfirmModal(null);
+                    setConfirmCourseDelete({ medId, medName });
+                  }}
                   className="w-full py-3 px-4 rounded-2xl bg-rose-50 hover:bg-rose-100 border-2 border-rose-200 text-rose-700 font-black text-xs flex items-center justify-between transition-all cursor-pointer"
                 >
                   <span>🚨 HỦY TOÀN BỘ LỘ TRÌNH THUỐC NÀY</span>
@@ -842,6 +958,292 @@ export default function CaregiverMedsScreen({
             >
               Hủy bỏ
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: IN-APP XÁC NHẬN HỦY TOÀN BỘ LỘ TRÌNH THUỐC */}
+      {confirmCourseDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-gray-100 space-y-4 animate-scale-up">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle size={22} />
+              </div>
+              <div>
+                <h3 className="font-black text-base text-[#1a2b4b]">Hủy toàn bộ lộ trình?</h3>
+                <p className="text-xs text-gray-500">Xóa vĩnh viễn thuốc & mọi cữ nhắc</p>
+              </div>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200/80 rounded-2xl p-3.5 space-y-1.5 text-xs text-rose-900">
+              <p className="font-bold">Thuốc: <span className="text-sm font-black">{confirmCourseDelete.medName}</span></p>
+              <p className="leading-relaxed text-rose-800">
+                Toàn bộ lịch nhắc cữ thuốc này trên tất cả các ngày sẽ bị gỡ bỏ khỏi điện thoại của <strong>{patientName}</strong>.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmCourseDelete(null)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 font-bold text-xs hover:bg-gray-50 cursor-pointer transition-all"
+              >
+                Giữ lại
+              </button>
+              <button
+                type="button"
+                disabled={!!deletingMedId}
+                onClick={() => handleExecuteDeleteCourse(confirmCourseDelete.medId, confirmCourseDelete.medName)}
+                className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/25 cursor-pointer active:scale-95 transition-all"
+              >
+                {deletingMedId ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Trash2 size={14} />
+                )}
+                <span>Xác nhận hủy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: SỬA LỘ TRÌNH THUỐC */}
+      {editingCourse && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 shadow-2xl border border-gray-100 flex flex-col max-h-[90vh] overflow-y-auto space-y-4 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 text-primary flex items-center justify-center">
+                  <Edit3 size={18} />
+                </div>
+                <h3 className="font-black text-base text-[#1a2b4b]">Sửa lộ trình thuốc</h3>
+              </div>
+              <button 
+                onClick={() => setEditingCourse(null)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-full cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              {/* Tên thuốc */}
+              <div>
+                <label className="font-bold text-[#1a2b4b] block mb-1">Tên thuốc *</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-bold text-[#1a2b4b] focus:border-primary outline-hidden"
+                  placeholder="Nhập tên thuốc..."
+                />
+              </div>
+
+              {/* Liều dùng */}
+              <div>
+                <label className="font-bold text-[#1a2b4b] block mb-1">Liều lượng dùng</label>
+                <input
+                  type="text"
+                  value={editDosage}
+                  onChange={(e) => setEditDosage(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-[#1a2b4b] focus:border-primary outline-hidden"
+                  placeholder="Ví dụ: 1 viên sau ăn sáng"
+                />
+              </div>
+
+              {/* Chỉ định / Lời dặn */}
+              <div>
+                <label className="font-bold text-[#1a2b4b] block mb-1">Chỉ định bác sĩ / Lời dặn</label>
+                <textarea
+                  rows={2}
+                  value={editInstructions}
+                  onChange={(e) => setEditInstructions(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs text-[#1a2b4b] focus:border-primary outline-hidden"
+                  placeholder="Uống sau khi ăn no 15 phút, kiêng rượu bia..."
+                />
+              </div>
+
+              {/* Giờ nhắc trong ngày */}
+              <div>
+                <label className="font-bold text-[#1a2b4b] block mb-1">Giờ nhắc trong ngày ({editDailyTimes.length} cữ)</label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {editDailyTimes.map((time, idx) => (
+                    <span key={idx} className="bg-blue-50 text-primary border border-blue-200 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1">
+                      <Clock size={11} />
+                      {time}
+                      <button
+                        type="button"
+                        onClick={() => setEditDailyTimes(editDailyTimes.filter((_, i) => i !== idx))}
+                        className="hover:text-red-500 cursor-pointer ml-0.5"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="time"
+                    value={newTimeInput}
+                    onChange={(e) => setNewTimeInput(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newTimeInput && !editDailyTimes.includes(newTimeInput)) {
+                        setEditDailyTimes([...editDailyTimes, newTimeInput].sort());
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-[#1a2b4b] font-bold text-xs rounded-xl cursor-pointer"
+                  >
+                    + Thêm giờ
+                  </button>
+                </div>
+              </div>
+
+              {/* Số ngày lộ trình */}
+              <div>
+                <label className="font-bold text-[#1a2b4b] block mb-1">Thời gian lộ trình tiếp tục</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[5, 7, 14, 30].map((days) => (
+                    <button
+                      key={days}
+                      type="button"
+                      onClick={() => setEditDurationDays(days)}
+                      className={cn(
+                        "py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer",
+                        editDurationDays === days
+                          ? "bg-primary text-white border-primary shadow-xs"
+                          : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+                      )}
+                    >
+                      {days} ngày
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setEditingCourse(null)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 font-bold text-xs hover:bg-gray-50 cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isSavingEdit}
+                onClick={handleSaveEditCourse}
+                className="flex-1 py-3 rounded-xl bg-primary hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-primary/25 cursor-pointer active:scale-95 transition-all"
+              >
+                {isSavingEdit ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                <span>Lưu thay đổi</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: THÊM CHẨN ĐOÁN VÀO TIỀN SỬ BỆNH */}
+      {isAddingDiagnosis && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 shadow-2xl border border-gray-100 flex flex-col max-h-[90vh] overflow-y-auto space-y-4 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                  <HeartPulse size={18} />
+                </div>
+                <h3 className="font-black text-base text-[#1a2b4b]">Thêm chẩn đoán y tế</h3>
+              </div>
+              <button 
+                onClick={() => setIsAddingDiagnosis(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-full cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-[#1a2b4b] block mb-1">Chẩn đoán / Bệnh lý *</label>
+                <input
+                  type="text"
+                  value={newDiagTitle}
+                  onChange={(e) => setNewDiagTitle(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-bold text-rose-700 focus:border-rose-500 outline-hidden"
+                  placeholder="Ví dụ: Tăng huyết áp vô căn, Đái tháo đường..."
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-[#1a2b4b] block mb-1">Bệnh viện / Cơ sở y tế</label>
+                <input
+                  type="text"
+                  value={newDiagHospital}
+                  onChange={(e) => setNewDiagHospital(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs text-[#1a2b4b] focus:border-primary outline-hidden"
+                  placeholder="Bệnh viện Bạch Mai, Đa khoa An Khang..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-bold text-[#1a2b4b] block mb-1">Bác sĩ khám</label>
+                  <input
+                    type="text"
+                    value={newDiagDoctor}
+                    onChange={(e) => setNewDiagDoctor(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-gray-200 text-xs text-[#1a2b4b] focus:border-primary outline-hidden"
+                    placeholder="BS. Nguyễn Văn A"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-[#1a2b4b] block mb-1">Ngày khám</label>
+                  <input
+                    type="date"
+                    value={newDiagDate}
+                    onChange={(e) => setNewDiagDate(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-gray-200 text-xs text-[#1a2b4b] focus:border-primary outline-hidden font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-[#1a2b4b] block mb-1">Hẹn tái khám sau (ngày)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="365"
+                  value={newDiagRevisitDays}
+                  onChange={(e) => setNewDiagRevisitDays(Number(e.target.value))}
+                  className="w-full px-3.5 py-2 rounded-xl border border-gray-200 text-xs text-[#1a2b4b] focus:border-primary outline-hidden font-bold"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setIsAddingDiagnosis(false)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 font-bold text-xs hover:bg-gray-50 cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isSavingDiag}
+                onClick={handleSaveNewDiagnosis}
+                className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/25 cursor-pointer active:scale-95 transition-all"
+              >
+                {isSavingDiag ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                <span>Lưu vào tiền sử</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

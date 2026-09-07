@@ -17,6 +17,7 @@ import { cn } from "../lib/utils";
 import { supabase } from "../lib/supabase";
 import type { Reminder } from "../services/medicationService";
 import { uploadPillProofImage } from "../services/medicationService";
+import { analyzeUnknownMedWithAI } from "../utils/geminiVision";
 import ElderlyCameraCaptureModal from "../components/ElderlyCameraCaptureModal";
 
 interface Props {
@@ -47,6 +48,7 @@ export default function ScanUnknownMedModal({
   onAddedMed
 }: Props) {
   const [photos, setPhotos] = useState<string[]>([]);
+  const [photoBlobs, setPhotoBlobs] = useState<Blob[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [isNotifyingCaregiver, setIsNotifyingCaregiver] = useState(false);
@@ -62,6 +64,7 @@ export default function ScanUnknownMedModal({
     setIsCameraOpen(false);
     if (photos.length >= 3) return;
 
+    setPhotoBlobs(prev => [...prev, blob]);
     setIsUploadingPhoto(true);
     try {
       const publicUrl = await uploadPillProofImage(blob);
@@ -78,6 +81,7 @@ export default function ScanUnknownMedModal({
       const file = e.target.files[0];
       if (photos.length >= 3) return;
 
+      setPhotoBlobs(prev => [...prev, file]);
       setIsUploadingPhoto(true);
       try {
         const publicUrl = await uploadPillProofImage(file);
@@ -93,6 +97,7 @@ export default function ScanUnknownMedModal({
 
   const removePhoto = (idx: number) => {
     setPhotos(prev => prev.filter((_, i) => i !== idx));
+    setPhotoBlobs(prev => prev.filter((_, i) => i !== idx));
     setResult(null);
   };
 
@@ -105,55 +110,29 @@ export default function ScanUnknownMedModal({
     setIsAnalyzing(true);
     setResult(null);
 
-    // Simulate / execute AI multi-angle pharmaceutical analysis
-    setTimeout(() => {
-      // Analyze against user's chronic diseases & current medications
+    try {
       const chronicDiseases = user?.user_metadata?.chronic_diseases || ["Cao huyết áp", "Tiểu đường"];
       const currentMedNames = currentSchedule.map(r => r.medication?.name || "").filter(Boolean);
 
-      // Deterministic sample evaluation based on photo count or default demo
-      const sampleResults: AnalysisResult[] = [
-        {
-          medName: "Panadol Extra (Paracetamol 500mg + Caffeine 65mg)",
-          activeIngredient: "Paracetamol & Caffeine",
-          dosage: "1 viên khi đau đầu",
-          purpose: "Giảm đau, hạ sốt nhanh",
-          confidence: "98.2%",
-          safetyLevel: chronicDiseases.some((d: string) => d.toLowerCase().includes("huyết áp")) ? "warning" : "safe",
-          safetyTitle: chronicDiseases.some((d: string) => d.toLowerCase().includes("huyết áp")) 
-            ? "CẦN CẨN TRỌNG: Chứa Caffeine có thể làm tăng nhẹ huyết áp" 
-            : "AN TOÀN - CÓ THỂ UỐNG",
-          safetyExplanation: "Thuốc không tương tác xấu với đơn thuốc định kỳ hiện tại. Tuy nhiên do Bác có bệnh nền Huyết áp, không nên uống vào buổi tối muộn để tránh mất ngủ.",
-          interactionNotes: `Đã kiểm tra an toàn với ${currentMedNames.length > 0 ? currentMedNames.join(", ") : "các thuốc hiện tại"}.`
-        },
-        {
-          medName: "Ibuprofen 400mg (Kháng viêm NSAID)",
-          activeIngredient: "Ibuprofen",
-          dosage: "1 viên sau ăn no",
-          purpose: "Giảm đau nhức xương khớp, chống viêm",
-          confidence: "96.7%",
-          safetyLevel: "danger",
-          safetyTitle: "CẢNH BÁO NGUY HIỂM: KHÔNG NÊN TỰ Ý UỐNG!",
-          safetyExplanation: "Thuốc kháng viêm Ibuprofen tương tác nguy hiểm với thuốc huyết áp Amlodipine và có nguy cơ gây xuất huyết tiêu hóa, tổn thương thận ở người cao tuổi.",
-          interactionNotes: "Tương tác thuốc nghiêm trọng với đơn thuốc huyết áp & dạ dày của Bác."
-        },
-        {
-          medName: "Berberin 100mg",
-          activeIngredient: "Berberin clorid chiết xuất thảo dược",
-          dosage: "2 viên khi rối loạn tiêu hóa",
-          purpose: "Hỗ trợ tiêu hóa, kháng khuẩn ruột",
-          confidence: "99.1%",
-          safetyLevel: "safe",
-          safetyTitle: "AN TOÀN - ĐƯỢC PHÉP DÙNG",
-          safetyExplanation: "Berberin là thảo dược lành tính, không gây tương tác bất lợi với các thuốc tim mạch hay tiểu đường đang dùng. Uống cách các thuốc khác ít nhất 1 giờ.",
-          interactionNotes: "Không có chống chỉ định với đơn thuốc hiện hành."
-        }
-      ];
+      const targetBlob = photoBlobs[0] || photos[0];
+      const aiRes = await analyzeUnknownMedWithAI(targetBlob as any, chronicDiseases, currentMedNames);
 
-      const selected = sampleResults[(photos.length - 1) % sampleResults.length];
-      setResult(selected);
+      setResult({
+        medName: aiRes.medName,
+        activeIngredient: aiRes.activeIngredient,
+        dosage: aiRes.dosage,
+        purpose: aiRes.purpose,
+        confidence: aiRes.confidence,
+        safetyLevel: aiRes.safetyLevel,
+        safetyTitle: aiRes.safetyTitle,
+        safetyExplanation: aiRes.safetyExplanation,
+        interactionNotes: aiRes.interactionNotes
+      });
+    } catch (err) {
+      console.warn("Lỗi phân tích AI:", err);
+    } finally {
       setIsAnalyzing(false);
-    }, 2000);
+    }
   };
 
   const handleNotifyCaregiver = async () => {
@@ -309,6 +288,7 @@ export default function ScanUnknownMedModal({
               title="Chụp Ảnh Viên Hoặc Vỉ Thuốc"
               subtitle="Căn chỉnh viên thuốc hoặc vỉ thuốc rõ nét dưới ánh sáng"
               guideText="ĐẶT VIÊN THUỐC HOẶC HỘP THUỐC VÀO GIỮA KHUNG HÌNH"
+              confirmButtonText="SỬ DỤNG ẢNH NÀY"
               onCaptureComplete={handleCaptureFromCamera}
             />
           )}

@@ -22,11 +22,15 @@ import {
   Camera,
   Volume2,
   Type,
-  Pill
+  Pill,
+  Moon,
+  Sun
 } from "lucide-react";
 import { useFamily } from "../contexts/FamilyContext";
 import { useSettings, type VoiceId, type FontSize } from "../contexts/SettingsContext";
 import { supabase } from "../lib/supabase";
+import { getCustomCaregivers } from "../services/familyCaregivers";
+import { getGeminiApiKey, setGeminiApiKey, testGeminiApiKey } from "../utils/geminiVision";
 import HealthProfileModal from "../screens/HealthProfileModal";
 import { cn } from "../lib/utils";
 
@@ -54,12 +58,18 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
     setLanguage, 
     voiceSettings, 
     setVoiceSettings, 
+    theme,
+    toggleTheme,
+    overdueAlertEnabled,
+    setOverdueAlertEnabled,
+    overdueThresholdMinutes,
+    setOverdueThresholdMinutes,
+    dailyAiReportEnabled,
+    setDailyAiReportEnabled,
     t, 
     testVoice 
   } = useSettings();
 
-  const [autoAlert, setAutoAlert] = useState(true);
-  const [dailyAiReport, setDailyAiReport] = useState(true);
   const [aiVoiceCall, setAiVoiceCall] = useState(false);
 
   // Cấu hình hình thức xác nhận uống thuốc của người già
@@ -88,7 +98,10 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
   const [showCaregiversModal, setShowCaregiversModal] = useState(false);
   const [showHealthProfileModal, setShowHealthProfileModal] = useState(false);
   
-  const [activeModal, setActiveModal] = useState<"audio" | "fontSize" | "language" | "sync" | "about" | "logout" | null>(null);
+  const [activeModal, setActiveModal] = useState<"audio" | "fontSize" | "language" | "sync" | "about" | "logout" | "geminiKey" | null>(null);
+  const [geminiKeyInput, setGeminiKeyInput] = useState(() => getGeminiApiKey());
+  const [geminiKeyTesting, setGeminiKeyTesting] = useState(false);
+  const [geminiKeyTestResult, setGeminiKeyTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState("Vừa xong");
   const [isTestingVoice, setIsTestingVoice] = useState(false);
@@ -133,15 +146,15 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
           .select('id, full_name, email, avatar_url')
           .in('id', caregiverIds);
 
+        let list: CaregiverMember[] = [];
         if (caregiversData && caregiversData.length > 0) {
-          const list: CaregiverMember[] = caregiversData.map((c, index) => {
+          list = caregiversData.map((c, index) => {
             const isMe = c.id === user?.id;
             const name = (c.full_name && c.full_name.trim()) 
               ? c.full_name.trim() 
               : (c.email ? c.email.split('@')[0] : `Người nhà ${index + 1}`);
             
-            const roles = ["Người chăm sóc chính", "Con cả (Nhắc cữ sáng)", "Con dâu (Nhắc cữ chiều)", "Bác sĩ gia đình"];
-            const role = isMe ? "Bạn (Người chăm sóc chính)" : (roles[index % roles.length] || "Người cùng chăm sóc");
+            const role = isMe ? "Bạn (Người chăm sóc chính)" : "Người cùng chăm sóc";
 
             return {
               id: c.id,
@@ -153,9 +166,10 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
               isMe
             };
           });
-          setCoCaregivers(list);
-        } else {
-          setCoCaregivers([
+        }
+
+        if (list.length === 0) {
+          list = [
             {
               id: user?.id,
               name: user?.user_metadata?.full_name || "Bạn",
@@ -165,20 +179,51 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
               avatar_url: user?.user_metadata?.avatar_url,
               isMe: true
             }
-          ]);
+          ];
         }
-      } else {
-        setCoCaregivers([
-          {
-            id: user?.id,
-            name: user?.user_metadata?.full_name || "Bạn",
-            email: user?.email,
-            phone: user?.user_metadata?.phone || "0901 234 567",
-            role: "Bạn (Người chăm sóc chính)",
-            avatar_url: user?.user_metadata?.avatar_url,
-            isMe: true
+
+        const custom = getCustomCaregivers(linkedPatientId);
+        const combined = [...list];
+        for (const cm of custom) {
+          if (!combined.some(m => m.id === cm.id)) {
+            combined.push({
+              id: cm.id,
+              name: cm.name,
+              role: cm.role,
+              phone: cm.phone,
+              email: cm.email,
+              avatar_url: cm.avatar_url,
+              isMe: cm.id === user?.id
+            });
           }
-        ]);
+        }
+        setCoCaregivers(combined);
+      } else {
+        const custom = getCustomCaregivers(linkedPatientId);
+        const selfMember: CaregiverMember = {
+          id: user?.id,
+          name: user?.user_metadata?.full_name || "Bạn",
+          email: user?.email,
+          phone: user?.user_metadata?.phone || "0901 234 567",
+          role: "Bạn (Người chăm sóc chính)",
+          avatar_url: user?.user_metadata?.avatar_url,
+          isMe: true
+        };
+        const combined = [selfMember];
+        for (const cm of custom) {
+          if (cm.id !== selfMember.id) {
+            combined.push({
+              id: cm.id,
+              name: cm.name,
+              role: cm.role,
+              phone: cm.phone,
+              email: cm.email,
+              avatar_url: cm.avatar_url,
+              isMe: false
+            });
+          }
+        }
+        setCoCaregivers(combined);
       }
     } catch (err) {
       console.error("Error fetching co-caregivers in settings:", err);
@@ -279,26 +324,53 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
               onClick={() => setShowCaregiversModal(true)}
             />
 
-            {/* Toggle 1: Overdue alerts */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-100">
-              <div className="flex items-center gap-3.5">
-                <div className="w-6 flex justify-center items-center text-[#1a2b4b]">
-                  <Bell size={20} />
+            {/* Toggle 1: Overdue alerts with threshold selector */}
+            <div className="p-4 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-6 flex justify-center items-center text-[#1a2b4b]">
+                    <Bell size={20} />
+                  </div>
+                  <div>
+                    <span className="text-[#1a2b4b] font-semibold text-base block leading-tight">
+                      Cảnh báo uống trễ
+                    </span>
+                    <span className="text-xs text-gray-400 font-medium">
+                      Báo động khi người bệnh trễ quá {overdueThresholdMinutes} phút
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[#1a2b4b] font-semibold text-base block leading-tight">
-                    Cảnh báo quá giờ uống
-                  </span>
-                  <span className="text-xs text-gray-400 font-medium">Báo động khi trễ &gt; 30 phút</span>
-                </div>
+                <button onClick={() => setOverdueAlertEnabled(!overdueAlertEnabled)} className="cursor-pointer">
+                  {overdueAlertEnabled ? (
+                    <ToggleRight size={36} className="text-primary fill-primary" />
+                  ) : (
+                    <ToggleLeft size={36} className="text-gray-300" />
+                  )}
+                </button>
               </div>
-              <button onClick={() => setAutoAlert(!autoAlert)} className="cursor-pointer">
-                {autoAlert ? (
-                  <ToggleRight size={36} className="text-primary fill-primary" />
-                ) : (
-                  <ToggleLeft size={36} className="text-gray-300" />
-                )}
-              </button>
+
+              {overdueAlertEnabled && (
+                <div className="mt-2.5 pl-9 flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-gray-500">Ngưỡng báo động:</span>
+                  <div className="flex gap-1.5">
+                    {[15, 30, 45, 60].map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => setOverdueThresholdMinutes(mins)}
+                        className={cn(
+                          "px-2.5 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer",
+                          overdueThresholdMinutes === mins
+                            ? "bg-primary text-white border-primary shadow-xs"
+                            : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
+                        )}
+                      >
+                        {mins} phút
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Toggle 2: Daily AI Report */}
@@ -311,11 +383,11 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
                   <span className="text-[#1a2b4b] font-semibold text-base block leading-tight">
                     Báo cáo AI lúc 21:00
                   </span>
-                  <span className="text-xs text-gray-400 font-medium">Tự động gửi đánh giá mỗi tối</span>
+                  <span className="text-xs text-gray-400 font-medium">Tự động tổng hợp và gửi đánh giá mỗi tối</span>
                 </div>
               </div>
-              <button onClick={() => setDailyAiReport(!dailyAiReport)} className="cursor-pointer">
-                {dailyAiReport ? (
+              <button onClick={() => setDailyAiReportEnabled(!dailyAiReportEnabled)} className="cursor-pointer">
+                {dailyAiReportEnabled ? (
                   <ToggleRight size={36} className="text-primary fill-primary" />
                 ) : (
                   <ToggleLeft size={36} className="text-gray-300" />
@@ -345,86 +417,94 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
               </button>
             </div>
 
-            {/* Mục Cấu hình Hình thức Xác Nhận Uống Thuốc */}
+            {/* Mục Cấu hình Hình thức Xác Nhận Uống Thuốc - Gọn gàng thanh Segmented Pills (< 60px) */}
             <div className="p-4 border-b border-gray-100 bg-slate-50/60">
-              <div className="flex items-center gap-3 mb-1">
-                <div className="w-6 flex justify-center items-center text-primary">
-                  <Camera size={20} />
-                </div>
-                <div>
-                  <span className="text-[#1a2b4b] font-bold text-base block leading-tight">
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-2">
+                  <Camera size={18} className="text-primary" />
+                  <span className="text-[#1a2b4b] font-bold text-sm">
                     Yêu cầu minh chứng khi uống thuốc
                   </span>
-                  <span className="text-xs text-gray-500 font-medium">
-                    Cấu hình nút bấm trên màn hình của {patientName}
-                  </span>
                 </div>
+                <span className="text-[11px] text-gray-400 font-medium">Màn hình {patientName}</span>
               </div>
 
-              <div className="grid grid-cols-1 gap-2 mt-3 pl-8">
-                {/* Lựa chọn 1: Bắt buộc chụp ảnh */}
+              {/* Segmented Control 3 Nấc */}
+              <div className="bg-gray-200/80 p-1 rounded-2xl flex gap-1">
                 <button
+                  type="button"
                   onClick={() => handleSaveVerificationMode('photo_required')}
                   className={cn(
-                    "p-3 rounded-2xl border text-left transition-all flex items-center justify-between cursor-pointer",
+                    "flex-1 py-2 px-1 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer",
                     verificationMode === 'photo_required'
-                      ? "border-primary bg-blue-50/90 ring-2 ring-primary/20 shadow-xs"
-                      : "border-gray-200 bg-white hover:bg-gray-50"
+                      ? "bg-white text-primary shadow-xs ring-1 ring-black/5"
+                      : "text-gray-600 hover:text-[#1a2b4b]"
                   )}
+                  title="Chỉ hiện nút chụp ảnh vỉ thuốc để AI đối chiếu"
                 >
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-xl">📸</span>
-                    <div>
-                      <p className="text-xs font-bold text-[#1a2b4b] leading-tight">Bắt buộc chụp ảnh vỉ thuốc (AI đối chiếu)</p>
-                      <p className="text-[11px] text-gray-500 font-normal mt-0.5">Chỉ hiện nút chụp ảnh, AI kiểm tra đúng thuốc mới duyệt</p>
-                    </div>
-                  </div>
-                  {verificationMode === 'photo_required' && <Check size={16} className="text-primary shrink-0" />}
+                  <span>📸</span>
+                  <span>Chỉ chụp ảnh</span>
                 </button>
 
-                {/* Lựa chọn 2: Xác nhận nhanh */}
                 <button
+                  type="button"
                   onClick={() => handleSaveVerificationMode('simple_only')}
                   className={cn(
-                    "p-3 rounded-2xl border text-left transition-all flex items-center justify-between cursor-pointer",
+                    "flex-1 py-2 px-1 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer",
                     verificationMode === 'simple_only'
-                      ? "border-emerald-500 bg-emerald-50/90 ring-2 ring-emerald-500/20 shadow-xs"
-                      : "border-gray-200 bg-white hover:bg-gray-50"
+                      ? "bg-white text-emerald-600 shadow-xs ring-1 ring-black/5"
+                      : "text-gray-600 hover:text-[#1a2b4b]"
                   )}
+                  title="Chỉ hiện nút 'Tôi đã uống thuốc', 1 chạm nhanh"
                 >
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-xl">⚡</span>
-                    <div>
-                      <p className="text-xs font-bold text-[#1a2b4b] leading-tight">Xác nhận nhanh (Không cần chụp ảnh)</p>
-                      <p className="text-[11px] text-gray-500 font-normal mt-0.5">Chỉ hiện nút 'Tôi đã uống thuốc', bấm 1 chạm tiện lợi</p>
-                    </div>
-                  </div>
-                  {verificationMode === 'simple_only' && <Check size={16} className="text-emerald-600 shrink-0" />}
+                  <span>⚡</span>
+                  <span>Uống ngay</span>
                 </button>
 
-                {/* Lựa chọn 3: Cả hai */}
                 <button
+                  type="button"
                   onClick={() => handleSaveVerificationMode('both')}
                   className={cn(
-                    "p-3 rounded-2xl border text-left transition-all flex items-center justify-between cursor-pointer",
+                    "flex-1 py-2 px-1 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer",
                     verificationMode === 'both'
-                      ? "border-blue-500 bg-blue-50/90 ring-2 ring-blue-500/20 shadow-xs"
-                      : "border-gray-200 bg-white hover:bg-gray-50"
+                      ? "bg-white text-primary shadow-xs ring-1 ring-black/5"
+                      : "text-gray-600 hover:text-[#1a2b4b]"
                   )}
+                  title="Hiện cả 2 nút cho người già chọn"
                 >
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-xl">🔄</span>
-                    <div>
-                      <p className="text-xs font-bold text-[#1a2b4b] leading-tight">Cung cấp cả 2 lựa chọn (Mặc định)</p>
-                      <p className="text-[11px] text-gray-500 font-normal mt-0.5">Người già có thể chọn chụp ảnh hoặc bấm uống ngay</p>
-                    </div>
-                  </div>
-                  {verificationMode === 'both' && <Check size={16} className="text-blue-600 shrink-0" />}
+                  <span>🔄</span>
+                  <span>Cả hai</span>
                 </button>
               </div>
             </div>
           </>
         )}
+
+        {/* Chế độ ban đêm (Dark Mode) */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+          <div className="flex items-center gap-3.5">
+            <div className="w-6 flex justify-center items-center text-[#1a2b4b]">
+              {theme === 'dark' ? (
+                <Moon size={20} className="text-amber-400 fill-amber-400" />
+              ) : (
+                <Sun size={20} className="text-amber-500" />
+              )}
+            </div>
+            <div>
+              <span className="text-[#1a2b4b] font-semibold text-base block leading-tight">
+                Chế độ ban đêm (Giao diện tối)
+              </span>
+              <span className="text-xs text-gray-400 font-medium">Bảo vệ mắt và dịu ánh sáng ban đêm</span>
+            </div>
+          </div>
+          <button onClick={toggleTheme} className="cursor-pointer" title="Bật/tắt giao diện tối">
+            {theme === 'dark' ? (
+              <ToggleRight size={36} className="text-primary fill-primary" />
+            ) : (
+              <ToggleLeft size={36} className="text-gray-300" />
+            )}
+          </button>
+        </div>
 
         {/* Âm thanh & Giọng nói AI */}
         <SettingRow
@@ -433,6 +513,19 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
           value={currentVoiceLabel}
           hasBorder
           onClick={() => setActiveModal("audio")}
+        />
+
+        {/* Google Gemini AI Vision API Key */}
+        <SettingRow
+          icon={<Sparkles size={20} className="text-amber-500" />}
+          label="Cấu hình Google Gemini AI"
+          value={getGeminiApiKey() ? "🟢 Đã kết nối API" : "⚠️ Chưa cấu hình Key"}
+          hasBorder
+          onClick={() => {
+            setGeminiKeyInput(getGeminiApiKey());
+            setGeminiKeyTestResult(null);
+            setActiveModal("geminiKey");
+          }}
         />
 
         {/* Cỡ chữ hiển thị */}
@@ -710,6 +803,109 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
               <Volume2 size={18} className={cn(isTestingVoice && "animate-pulse")} />
               <span>{isTestingVoice ? t("voice.testing") : t("voice.test_button")}</span>
             </button>
+          </div>
+        </ModalWrapper>
+      )}
+
+      {/* Gemini AI Key Modal */}
+      {activeModal === "geminiKey" && (
+        <ModalWrapper title="Cấu hình Google Gemini AI" onClose={() => setActiveModal(null)}>
+          <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+            <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 text-xs text-amber-950 space-y-1.5 leading-relaxed">
+              <p className="font-extrabold flex items-center gap-1.5 text-amber-800 text-sm">
+                <Sparkles size={16} /> Kích hoạt AI nhận diện đơn & vỉ thuốc thật
+              </p>
+              <p>
+                Dùng API key từ Google Gemini để AI đọc chính xác đơn thuốc của bác sĩ, nhận diện vỉ thuốc người cao tuổi đã uống, và phân tích tương tác thuốc.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-black text-[#1a2b4b] uppercase tracking-wider block">
+                Google Gemini API Key (Bắt đầu bằng AIza...):
+              </label>
+              <input
+                type="password"
+                value={geminiKeyInput}
+                onChange={(e) => {
+                  setGeminiKeyInput(e.target.value);
+                  setGeminiKeyTestResult(null);
+                }}
+                placeholder="Dán khóa API Key tại đây..."
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-mono outline-none focus:border-primary focus:bg-white transition-all"
+              />
+              <p className="text-[11px] text-gray-500 leading-relaxed">
+                💡 Nhận API key miễn phí tại <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-primary font-bold underline">Google AI Studio</a>. Khóa được lưu trực tiếp trên thiết bị của bạn.
+              </p>
+            </div>
+
+            {geminiKeyTestResult && (
+              <div className={cn(
+                "p-3.5 rounded-2xl text-xs font-bold flex items-center gap-2",
+                geminiKeyTestResult.success 
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200" 
+                  : "bg-red-50 text-red-700 border border-red-200"
+              )}>
+                {geminiKeyTestResult.success ? <Check size={18} className="shrink-0" /> : <X size={18} className="shrink-0" />}
+                <span>{geminiKeyTestResult.message}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!geminiKeyInput.trim()) {
+                    setGeminiKeyTestResult({ success: false, message: "Vui lòng nhập API Key để kiểm tra" });
+                    return;
+                  }
+                  setGeminiKeyTesting(true);
+                  setGeminiKeyTestResult(null);
+                  try {
+                    const res = await testGeminiApiKey(geminiKeyInput.trim());
+                    setGeminiKeyTestResult(res);
+                  } catch (err: any) {
+                    setGeminiKeyTestResult({ success: false, message: err?.message || "Lỗi kiểm tra" });
+                  } finally {
+                    setGeminiKeyTesting(false);
+                  }
+                }}
+                disabled={geminiKeyTesting || !geminiKeyInput.trim()}
+                className="py-3.5 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-2xl disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {geminiKeyTesting ? <Loader2 size={15} className="animate-spin" /> : null}
+                <span>Kiểm tra kết nối</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setGeminiApiKey(geminiKeyInput.trim());
+                  setActiveModal(null);
+                  alert("Đã lưu Google Gemini API Key thành công!");
+                }}
+                className="py-3.5 px-3 bg-primary hover:bg-blue-700 text-white font-bold text-xs rounded-2xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-primary/20 active:scale-95"
+              >
+                <Check size={16} strokeWidth={2.5} />
+                <span>Lưu & Kích hoạt</span>
+              </button>
+            </div>
+
+            {getGeminiApiKey() && (
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGeminiApiKey("");
+                    setGeminiKeyInput("");
+                    setGeminiKeyTestResult(null);
+                  }}
+                  className="text-xs text-red-500 hover:text-red-700 font-semibold cursor-pointer underline"
+                >
+                  Xóa API Key đã lưu
+                </button>
+              </div>
+            )}
           </div>
         </ModalWrapper>
       )}

@@ -53,61 +53,147 @@ export const getSavedVoiceSettings = (): Required<SpeakOptions> => {
   };
 };
 
+let currentAudio: HTMLAudioElement | null = null;
+
+export const stopSpeech = () => {
+  if (currentAudio) {
+    try {
+      currentAudio.pause();
+      currentAudio.src = '';
+    } catch {}
+    currentAudio = null;
+  }
+  if ('speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {}
+  }
+};
+
 export const speakVietnamese = (text: string, options?: SpeakOptions) => {
+  stopSpeech();
+
+  const saved = getSavedVoiceSettings();
+  const voiceId = options?.voiceId || saved.voiceId;
+  const speed = options?.speed ?? saved.speed;
+  const volume = Math.max(0.1, Math.min(1.0, (options?.volume ?? saved.volume) / 100));
+
+  const cleanText = text.trim();
+  if (!cleanText) return;
+
+  // Cấu hình âm sắc và tốc độ riêng biệt cho từng giọng đọc
+  let playbackRate = speed;
+  let preservesPitch = true;
+
+  if (voiceId === 'male_north') {
+    // Giọng Nam Miền Bắc: Trầm ấm, dải tần thấp (hạ ~3.5 semitones)
+    playbackRate = Math.max(0.72, speed * 0.84);
+    preservesPitch = false;
+  } else if (voiceId === 'male_south') {
+    // Giọng Nam Miền Nam: Thân thiện, hào sảng (hạ ~2.5 semitones)
+    playbackRate = Math.max(0.76, speed * 0.88);
+    preservesPitch = false;
+  } else if (voiceId === 'female_south') {
+    // Giọng Nữ Miền Nam: Trong trẻo, tươi vui, cao hơn 1 tone
+    playbackRate = Math.min(1.2, speed * 1.06);
+    preservesPitch = false;
+  } else {
+    // Giọng Nữ Miền Bắc: Dịu dàng, chuẩn mực
+    playbackRate = speed;
+    preservesPitch = true;
+  }
+
+  // Phương thức 1: Online Google Vietnamese TTS Audio Engine kết hợp Browser Pitch Shifter
+  // Tạo ra sự khác biệt âm thanh RÕ RỆT giữa Nam / Nữ và vùng miền
+  if (cleanText.length < 200) {
+    try {
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=vi&client=tw-ob&q=${encodeURIComponent(cleanText)}`;
+      const audio = new Audio(url);
+      currentAudio = audio;
+      audio.volume = volume;
+      audio.playbackRate = playbackRate;
+      
+      // Tắt preservesPitch để thay đổi cao độ vật lý của âm thanh
+      (audio as any).preservesPitch = preservesPitch;
+      (audio as any).mozPreservesPitch = preservesPitch;
+      (audio as any).webkitPreservesPitch = preservesPitch;
+
+      let hasStarted = false;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            hasStarted = true;
+          })
+          .catch(() => {
+            if (!hasStarted) {
+              fallbackToSpeechSynthesis(cleanText, voiceId, speed, volume);
+            }
+          });
+        return;
+      }
+    } catch (e) {
+      console.warn("DualEngine Audio playback failed, using Web Speech API fallback:", e);
+    }
+  }
+
+  // Phương thức 2: Fallback Web Speech Synthesis
+  fallbackToSpeechSynthesis(cleanText, voiceId, speed, volume);
+};
+
+function fallbackToSpeechSynthesis(text: string, voiceId: string, speed: number, volume: number) {
   if (!('speechSynthesis' in window)) {
     console.warn("Trình duyệt không hỗ trợ Web Speech API.");
     return;
   }
 
-  // Cancel any ongoing speech
-  window.speechSynthesis.cancel();
-
-  const saved = getSavedVoiceSettings();
-  const voiceId = options?.voiceId || saved.voiceId;
-  const speed = options?.speed ?? saved.speed;
-  const volume = options?.volume ?? saved.volume;
-
-  // Tính pitch âm thanh phù hợp theo giới tính và vùng miền
-  let targetPitch = options?.pitch ?? saved.pitch;
-  if (!options?.pitch) {
-    if (voiceId === 'male_north') targetPitch = 0.82;
-    else if (voiceId === 'male_south') targetPitch = 0.88;
-    else if (voiceId === 'female_north') targetPitch = 1.15;
-    else if (voiceId === 'female_south') targetPitch = 1.05;
-  }
+  try {
+    window.speechSynthesis.cancel();
+  } catch {}
 
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'vi-VN';
-  utterance.rate = speed;
-  utterance.pitch = targetPitch;
-  utterance.volume = Math.max(0.1, Math.min(1.0, volume / 100));
+  utterance.volume = volume;
 
-  // Nhận diện và gán voice tự nhiên từ hệ điều hành / trình duyệt
+  if (voiceId === 'male_north') {
+    utterance.pitch = 0.75;
+    utterance.rate = speed * 0.88;
+  } else if (voiceId === 'male_south') {
+    utterance.pitch = 0.82;
+    utterance.rate = speed * 0.92;
+  } else if (voiceId === 'female_south') {
+    utterance.pitch = 1.08;
+    utterance.rate = speed * 1.04;
+  } else {
+    utterance.pitch = 1.18;
+    utterance.rate = speed;
+  }
+
   const voices = window.speechSynthesis.getVoices();
   const viVoices = voices.filter(v => v.lang.includes('vi') || v.lang.includes('VN'));
 
   if (viVoices.length > 0) {
     if (voiceId.startsWith('male')) {
-      // Ưu tiên giọng Nam (NamMinh trên Windows/Edge hoặc tên chứa Male / Nam)
       const maleVoice = viVoices.find(v => 
+        v.name.toLowerCase().includes('an') ||
         v.name.toLowerCase().includes('nam') || 
         v.name.toLowerCase().includes('male') ||
         v.name.toLowerCase().includes('minh')
       );
       utterance.voice = maleVoice || viVoices[0];
     } else {
-      // Ưu tiên giọng Nữ (HoaiMy trên Windows/Edge hoặc tên chứa Female / My)
       const femaleVoice = viVoices.find(v => 
         v.name.toLowerCase().includes('my') || 
         v.name.toLowerCase().includes('hoai') ||
-        v.name.toLowerCase().includes('female')
+        v.name.toLowerCase().includes('female') ||
+        v.name.toLowerCase().includes('linh')
       );
       utterance.voice = femaleVoice || viVoices[0];
     }
   }
 
   window.speechSynthesis.speak(utterance);
-};
+}
 
 export const announceMedication = (medName: string, dosage: string, options?: SpeakOptions) => {
   playAlarmTone();

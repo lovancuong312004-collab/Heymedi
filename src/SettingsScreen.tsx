@@ -14,7 +14,11 @@ import {
   Type, 
   Sparkles,
   Phone,
-  Pill
+  Pill,
+  Moon,
+  Sun,
+  ToggleLeft,
+  ToggleRight
 } from "lucide-react";
 import HealthProfileModal from "./screens/HealthProfileModal";
 import { useSettings, type VoiceId, type FontSize } from "./contexts/SettingsContext";
@@ -37,6 +41,8 @@ export default function SettingsScreen({ user, onLogout }: Props) {
     setLanguage, 
     voiceSettings, 
     setVoiceSettings, 
+    theme,
+    toggleTheme,
     t, 
     testVoice 
   } = useSettings();
@@ -137,6 +143,31 @@ export default function SettingsScreen({ user, onLogout }: Props) {
           onClick={() => setActiveModal("fontSize")}
           hasBorder 
         />
+        {/* Chế độ ban đêm (Dark Mode) */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+          <div className="flex items-center gap-3.5">
+            <div className="w-6 flex justify-center items-center text-[#1a2b4b]">
+              {theme === 'dark' ? (
+                <Moon size={22} className="text-amber-400 fill-amber-400" />
+              ) : (
+                <Sun size={22} className="text-amber-500" />
+              )}
+            </div>
+            <div>
+              <span className="text-[#1a2b4b] font-bold text-base block leading-tight">
+                Chế độ ban đêm
+              </span>
+              <span className="text-xs text-gray-400 font-medium">Giao diện tối dịu mắt</span>
+            </div>
+          </div>
+          <button onClick={toggleTheme} className="cursor-pointer" title="Bật/tắt giao diện tối">
+            {theme === 'dark' ? (
+              <ToggleRight size={36} className="text-primary fill-primary" />
+            ) : (
+              <ToggleLeft size={36} className="text-gray-300" />
+            )}
+          </button>
+        </div>
         <SettingItem 
           icon={<Globe size={22} />} 
           label={t("settings.language")} 

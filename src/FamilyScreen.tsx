@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
-import { Plus, ChevronRight, Heart, UserPlus, Loader2, Phone, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Plus, ChevronRight, Heart, UserPlus, Loader2, Phone, AlertCircle, CheckCircle2, X, Check, QrCode } from "lucide-react";
 import HealthProfileModal from "./screens/HealthProfileModal";
 import GenerateLinkModal from "./screens/GenerateLinkModal";
 import SOSModal from "./screens/SOSModal";
 import CallModal from "./caregiver/CallModal";
 import { supabase } from "./lib/supabase";
+import { getCustomCaregivers, addCustomCaregiver } from "./services/familyCaregivers";
+import { cn } from "./lib/utils";
 
 interface Props {
   user: any;
@@ -13,9 +15,16 @@ interface Props {
 export default function FamilyScreen({ user }: Props) {
   const [isHealthProfileOpen, setIsHealthProfileOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [isAddCaregiverOpen, setIsAddCaregiverOpen] = useState(false);
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [familyMembers, setFamilyMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Form thêm nhanh người chăm sóc
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState("Con gái");
+  const [newMemberPhone, setNewMemberPhone] = useState("");
+
   const [callingContact, setCallingContact] = useState<{
     id?: string;
     name: string;
@@ -48,8 +57,9 @@ export default function FamilyScreen({ user }: Props) {
           console.error("user_view error:", viewError);
         }
 
+        let dbMembers: any[] = [];
         if (caregivers && caregivers.length > 0) {
-          const members = caregivers.map(c => {
+          dbMembers = caregivers.map(c => {
             const name = (c.full_name && c.full_name.trim()) 
               ? c.full_name.trim() 
               : (c.email ? c.email.split('@')[0] : "Người chăm sóc");
@@ -57,12 +67,12 @@ export default function FamilyScreen({ user }: Props) {
               id: c.id,
               name,
               email: c.email,
+              phone: "0901 234 567",
               role: "Đang chăm sóc bạn",
               avatar_url: c.avatar_url,
               initial: (name || "C")[0].toUpperCase()
             };
           });
-          setFamilyMembers(members);
         } else {
           // Fallback to profiles if user_view returned empty
           const { data: profiles } = await supabase
@@ -71,30 +81,83 @@ export default function FamilyScreen({ user }: Props) {
             .in('id', caregiverIds);
             
           if (profiles && profiles.length > 0) {
-            const members = profiles.map(p => {
+            dbMembers = profiles.map(p => {
               const name = p.full_name?.trim() || p.phone || "Người chăm sóc";
               return {
                 id: p.id,
                 name,
+                phone: p.phone || "0901 234 567",
                 role: "Đang chăm sóc bạn",
                 avatar_url: p.avatar_url,
                 initial: (name || "C")[0].toUpperCase()
               };
             });
-            setFamilyMembers(members);
-          } else {
-            setFamilyMembers([]);
           }
         }
+
+        // Merge with custom caregivers list
+        const customCaregivers = getCustomCaregivers(user.id);
+        const combined = [...dbMembers];
+        for (const cm of customCaregivers) {
+          if (!combined.some(m => m.id === cm.id)) {
+            combined.push({
+              id: cm.id,
+              name: cm.name,
+              phone: cm.phone,
+              email: cm.email,
+              role: cm.role,
+              avatar_url: cm.avatar_url,
+              initial: (cm.name || "C")[0].toUpperCase()
+            });
+          }
+        }
+        setFamilyMembers(combined);
       } else {
-        setFamilyMembers([]);
+        const customCaregivers = getCustomCaregivers(user.id);
+        const combined = customCaregivers.map(cm => ({
+          id: cm.id,
+          name: cm.name,
+          phone: cm.phone,
+          email: cm.email,
+          role: cm.role,
+          avatar_url: cm.avatar_url,
+          initial: (cm.name || "C")[0].toUpperCase()
+        }));
+        setFamilyMembers(combined);
       }
     } catch (e) {
       console.error("Failed to fetch caregivers:", e);
-      setFamilyMembers([]);
+      setFamilyMembers(getCustomCaregivers(user.id).map(cm => ({
+        id: cm.id,
+        name: cm.name,
+        phone: cm.phone,
+        email: cm.email,
+        role: cm.role,
+        avatar_url: cm.avatar_url,
+        initial: (cm.name || "C")[0].toUpperCase()
+      })));
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAddNewCaregiver = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.id || !newMemberName.trim()) {
+      alert("Vui lòng nhập tên người thân / người chăm sóc!");
+      return;
+    }
+
+    addCustomCaregiver(user.id, {
+      name: newMemberName.trim(),
+      role: newMemberRole.trim() || "Người chăm sóc",
+      phone: newMemberPhone.trim() || "0901 234 567"
+    });
+
+    setIsAddCaregiverOpen(false);
+    setNewMemberName("");
+    setNewMemberPhone("");
+    fetchCaregivers();
   };
 
   useEffect(() => {
@@ -103,6 +166,9 @@ export default function FamilyScreen({ user }: Props) {
       
       const channel = supabase.channel('family-links-elderly-channel')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'family_links', filter: `patient_id=eq.${user.id}` }, () => {
+          fetchCaregivers();
+        })
+        .on('broadcast', { event: 'FAMILY_TEAM_CHANGED' }, () => {
           fetchCaregivers();
         })
         .subscribe();
@@ -182,13 +248,23 @@ export default function FamilyScreen({ user }: Props) {
       <div className="mb-5">
         <div className="flex justify-between items-center mb-3 px-1">
           <h2 className="text-[#1A2B4B] font-bold text-base">Người đang chăm sóc bạn</h2>
-          <button 
-            onClick={() => setIsLinkModalOpen(true)}
-            className="flex items-center gap-1 text-primary font-bold text-xs bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-full active:scale-95 transition-all"
-          >
-            <Plus size={14} strokeWidth={3} />
-            <span>Thêm mới</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button 
+              onClick={() => setIsAddCaregiverOpen(true)}
+              className="flex items-center gap-1 text-primary font-bold text-xs bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-full active:scale-95 transition-all cursor-pointer"
+            >
+              <Plus size={14} strokeWidth={3} />
+              <span>Thêm mới</span>
+            </button>
+            <button 
+              onClick={() => setIsLinkModalOpen(true)}
+              className="flex items-center gap-1 text-gray-500 font-bold text-xs bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-full active:scale-95 transition-all cursor-pointer"
+              title="Tạo mã QR liên kết"
+            >
+              <QrCode size={13} />
+              <span>Mã QR</span>
+            </button>
+          </div>
         </div>
         
         {loading ? (
@@ -267,6 +343,99 @@ export default function FamilyScreen({ user }: Props) {
           isSOS={callingContact.isSOS}
           isInitiator={true}
         />
+      )}
+
+      {/* Modal Thêm người chăm sóc / Bác sĩ riêng */}
+      {isAddCaregiverOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-gray-100 space-y-4 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 text-primary flex items-center justify-center">
+                  <UserPlus size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-[#1A2B4B]">Thêm người chăm sóc</h3>
+                  <p className="text-[11px] text-gray-400">Lưu vào danh bạ chăm sóc của Bác</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsAddCaregiverOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-full cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddNewCaregiver} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-[#1A2B4B] block mb-1">Họ và tên *</label>
+                <input
+                  type="text"
+                  required
+                  value={newMemberName}
+                  onChange={(e) => setNewMemberName(e.target.value)}
+                  placeholder="Ví dụ: Bác sĩ Tuấn, Con gái Lan..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-bold text-[#1A2B4B] focus:border-primary outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-[#1A2B4B] block mb-1">Mối quan hệ / Vai trò</label>
+                <input
+                  type="text"
+                  value={newMemberRole}
+                  onChange={(e) => setNewMemberRole(e.target.value)}
+                  placeholder="Ví dụ: Con gái, Bác sĩ gia đình..."
+                  className="w-full px-3.5 py-2 rounded-xl border border-gray-200 text-xs font-medium text-[#1A2B4B] focus:border-primary outline-hidden mb-1.5"
+                />
+                <div className="flex flex-wrap gap-1">
+                  {["Con cả", "Con gái", "Con dâu", "Bác sĩ gia đình", "Điều dưỡng"].map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() => setNewMemberRole(role)}
+                      className={cn(
+                        "px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer",
+                        newMemberRole === role ? "bg-primary text-white border-primary" : "bg-gray-50 text-gray-600 border-gray-200"
+                      )}
+                    >
+                      {role}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-[#1A2B4B] block mb-1">Số điện thoại liên hệ</label>
+                <input
+                  type="tel"
+                  value={newMemberPhone}
+                  onChange={(e) => setNewMemberPhone(e.target.value)}
+                  placeholder="0912 345 678"
+                  className="w-full px-3.5 py-2 rounded-xl border border-gray-200 text-xs text-[#1A2B4B] focus:border-primary outline-hidden font-bold"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddCaregiverOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-xs hover:bg-gray-50 cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-md shadow-primary/25 cursor-pointer active:scale-95 transition-all"
+                >
+                  <Check size={14} />
+                  <span>Lưu thành viên</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
     </div>

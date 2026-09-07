@@ -22,6 +22,10 @@ import {
 import ElderlyCameraCaptureModal from "../components/ElderlyCameraCaptureModal";
 import { 
   analyzePrescription, 
+  getGeminiApiKey,
+  setGeminiApiKey,
+  testGeminiApiKey,
+  CLINICAL_FALLBACK_RESULT,
   type ParsedMedication
 } from "../utils/geminiVision";
 import { addMedicationWithCourse, saveDiagnosisRecord } from "../services/medicationService";
@@ -50,6 +54,13 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
   const [scanStageText, setScanStageText] = useState("Đang chuẩn bị ảnh...");
   const [isSaving, setIsSaving] = useState(false);
   const [showOriginalPhoto, setShowOriginalPhoto] = useState(false);
+
+  // Lỗi nhận diện & Cấu hình API Key
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState(() => getGeminiApiKey());
+  const [apiKeyTesting, setApiKeyTesting] = useState(false);
+  const [apiKeyTestResult, setApiKeyTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Dữ liệu y khoa bóc tách
   const [prescriptionMeta, setPrescriptionMeta] = useState<{
@@ -122,13 +133,28 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
   const processImageFile = async (file: File, previewUrl: string) => {
     setImageFile(file);
     setImagePreview(previewUrl);
+    setScanError(null);
     setStep("scanning");
+    setScanProgress(25);
+    setScanStageText("🔍 AI Gemini Vision đang đọc đơn thuốc...");
 
     try {
-      const [result] = await Promise.all([
-        analyzePrescription(file),
-        new Promise((resolve) => setTimeout(resolve, 2800))
-      ]);
+      const result = await analyzePrescription(file);
+
+      // Nếu chưa có API Key
+      if (result.isApiKeyMissing) {
+        setStep("capture");
+        setScanError(result.errorReason || "Chưa cấu hình Google Gemini API Key.");
+        setShowApiKeyModal(true);
+        return;
+      }
+
+      // Nếu ảnh chụp không phải là đơn thuốc y tế (ví dụ: selfie/khuôn mặt/đồ vật)
+      if (result.isValidPrescription === false) {
+        setStep("capture");
+        setScanError(result.errorReason || "Ảnh chụp không phải là đơn thuốc y tế hợp lệ. Vui lòng chụp rõ văn bản đơn thuốc có chữ ký hoặc mộc của Bác sĩ.");
+        return;
+      }
 
       setScanProgress(100);
       setScanStageText("✅ Hoàn tất trích xuất dữ liệu lâm sàng!");
@@ -143,12 +169,50 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
         });
         setMedsList(result.medications);
         setStep("review");
-      }, 400);
+      }, 300);
 
     } catch (err: any) {
-      alert(err.message || "Có lỗi xảy ra khi quét đơn thuốc. Vui lòng thử lại!");
-      resetState();
+      setStep("capture");
+      setScanError(err?.message || "Có lỗi xảy ra khi quét đơn thuốc. Vui lòng thử lại!");
     }
+  };
+
+  const handleUseDemoSample = () => {
+    setScanError(null);
+    setShowApiKeyModal(false);
+    setPrescriptionMeta({
+      hospitalName: CLINICAL_FALLBACK_RESULT.hospitalName,
+      patientName: CLINICAL_FALLBACK_RESULT.patientName,
+      diagnosis: CLINICAL_FALLBACK_RESULT.diagnosis,
+      doctorName: CLINICAL_FALLBACK_RESULT.doctorName,
+      revisitDays: CLINICAL_FALLBACK_RESULT.revisitDays
+    });
+    setMedsList(CLINICAL_FALLBACK_RESULT.medications);
+    setStep("review");
+  };
+
+  const handleTestApiKey = async () => {
+    if (!apiKeyInput.trim()) {
+      setApiKeyTestResult({ success: false, message: "Vui lòng nhập API Key để kiểm tra" });
+      return;
+    }
+    setApiKeyTesting(true);
+    setApiKeyTestResult(null);
+    try {
+      const res = await testGeminiApiKey(apiKeyInput.trim());
+      setApiKeyTestResult(res);
+    } catch (err: any) {
+      setApiKeyTestResult({ success: false, message: err?.message || "Lỗi kiểm tra" });
+    } finally {
+      setApiKeyTesting(false);
+    }
+  };
+
+  const handleSaveApiKey = () => {
+    setGeminiApiKey(apiKeyInput.trim());
+    setShowApiKeyModal(false);
+    setScanError(null);
+    alert("Đã lưu Google Gemini API Key thành công! Bây giờ bạn có thể quét đơn thuốc bằng AI thật.");
   };
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -174,6 +238,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
     setShowOriginalPhoto(false);
     setIsMismatchConfirmed(false);
     setIsCameraOpen(false);
+    setScanError(null);
     setStep("capture");
   };
 
@@ -340,7 +405,76 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
           {/* 1. MÀN HÌNH CHỌN / CHỤP ẢNH */}
           {step === "capture" && (
             <div className="flex flex-col items-center justify-center py-2 space-y-4">
-              {/* Input file thuần túy (không ép capture để không gây lỗi bật file manager khi muốn chụp) */}
+              
+              {/* Cảnh báo lỗi nhận diện (Ví dụ chụp selfie / không phải đơn thuốc) */}
+              {scanError && (
+                <div className="w-full bg-red-50 border border-red-200 rounded-3xl p-4 flex flex-col gap-2.5 animate-fade-in text-red-950">
+                  <div className="flex items-center gap-2 font-black text-sm text-red-700">
+                    <AlertTriangle size={20} className="shrink-0" />
+                    <span>Không nhận diện được đơn thuốc y tế</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-red-800 font-medium">
+                    {scanError}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsCameraOpen(true)}
+                      className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer shadow-sm"
+                    >
+                      📸 Chụp lại bằng Camera
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3.5 py-2 bg-white hover:bg-red-50 border border-red-300 text-red-800 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer"
+                    >
+                      📁 Chọn ảnh khác từ máy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUseDemoSample}
+                      className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer ml-auto"
+                    >
+                      🧪 Thử nghiệm đơn mẫu An Khang
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Thanh trạng thái Google Gemini AI Vision */}
+              <div className="w-full flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className={cn(
+                    "w-7 h-7 rounded-xl flex items-center justify-center font-black text-xs",
+                    getGeminiApiKey() ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                  )}>
+                    <Sparkles size={15} />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-[#1A2B4B] block">Google Gemini AI Vision:</span>
+                    <span className={cn(
+                      "text-[11px] font-semibold",
+                      getGeminiApiKey() ? "text-emerald-600" : "text-amber-600"
+                    )}>
+                      {getGeminiApiKey() ? "🟢 Đã kết nối API trực tiếp" : "⚠️ Chưa có API Key (Bấm để cấu hình)"}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setApiKeyInput(getGeminiApiKey());
+                    setApiKeyTestResult(null);
+                    setShowApiKeyModal(true);
+                  }}
+                  className="text-xs font-bold text-primary hover:text-blue-700 bg-white border border-blue-200 hover:border-primary px-3 py-1.5 rounded-xl shadow-xs transition-colors cursor-pointer"
+                >
+                  {getGeminiApiKey() ? "Cài đặt Key" : "Nhập API Key"}
+                </button>
+              </div>
+
+              {/* Input file thuần túy */}
               <input 
                 type="file" 
                 accept="image/*" 
@@ -362,7 +496,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                   </div>
                   <div>
                     <span className="font-black text-lg block tracking-wide text-white">📸 Chụp Bằng Camera</span>
-                    <span className="text-xs text-blue-100 mt-1 block font-medium">Bật máy ảnh trực tiếp để chụp đơn thuốc</span>
+                    <span className="text-xs text-blue-100 mt-1 block font-medium">Bật máy ảnh chụp trực tiếp đơn thuốc</span>
                   </div>
                   <span className="text-[11px] font-extrabold bg-white/25 text-white px-3 py-1 rounded-full mt-1 border border-white/30">
                     Máy ảnh trực tiếp (Live)
@@ -393,9 +527,10 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                 <ElderlyCameraCaptureModal
                   isOpen={isCameraOpen}
                   onClose={() => setIsCameraOpen(false)}
-                  title="Chụp Ảnh Đơn Thuốc"
+                  title="Chụp Ảnh Đơn Thuốc Bác Sĩ"
                   subtitle="Căn chỉnh đơn thuốc vuông vắn trong khung hình"
                   guideText="ĐẶT ĐƠN THUỐC VUÔNG VẮN VÀO KHUNG ĐỂ AI NHẬN DIỆN CHÍNH XÁC"
+                  confirmButtonText="TIẾP TỤC PHÂN TÍCH ĐƠN THUỐC"
                   onCaptureComplete={handleCameraCapture}
                 />
               )}
@@ -760,6 +895,92 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
               {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Check size={20} strokeWidth={3} />}
               {isSaving ? "Đang lưu đơn thuốc & tiền sử..." : `XÁC NHẬN LÊN LỊCH THEO ĐƠN BÁC SĨ`}
             </button>
+          </div>
+        )}
+
+        {/* Modal Cấu hình API Key trực tiếp */}
+        {showApiKeyModal && (
+          <div className="fixed inset-0 z-60 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+            <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl space-y-4 border border-gray-100 animate-scale-up">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-primary flex items-center justify-center font-bold">
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-base text-[#1A2B4B]">Google Gemini API Key</h4>
+                    <p className="text-xs text-gray-400">Dùng AI thật để đọc và phân tích đơn thuốc</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowApiKeyModal(false)}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-700 block">
+                  Khóa API Gemini (AIza...):
+                </label>
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => {
+                    setApiKeyInput(e.target.value);
+                    setApiKeyTestResult(null);
+                  }}
+                  placeholder="Dán API key tại đây..."
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-mono outline-none focus:border-primary focus:bg-white transition-all"
+                />
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  💡 Bạn có thể lấy API Key miễn phí tại <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-primary font-bold underline">Google AI Studio</a>. Khóa được lưu trực tiếp trên trình duyệt của bạn.
+                </p>
+              </div>
+
+              {apiKeyTestResult && (
+                <div className={cn(
+                  "p-3 rounded-xl text-xs font-bold flex items-center gap-2",
+                  apiKeyTestResult.success ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"
+                )}>
+                  {apiKeyTestResult.success ? <Check size={16} /> : <AlertTriangle size={16} />}
+                  <span>{apiKeyTestResult.message}</span>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 pt-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTestApiKey}
+                    disabled={apiKeyTesting || !apiKeyInput.trim()}
+                    className="py-3 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    {apiKeyTesting ? <Loader2 size={14} className="animate-spin" /> : null}
+                    <span>Kiểm tra kết nối</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveApiKey}
+                    disabled={!apiKeyInput.trim()}
+                    className="py-3 px-3 bg-primary hover:bg-blue-700 text-white font-bold text-xs rounded-xl disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <Check size={14} />
+                    <span>Lưu & Kích hoạt</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleUseDemoSample}
+                  className="py-2.5 text-xs text-gray-500 hover:text-primary font-semibold transition-colors text-center"
+                >
+                  Hoặc bấm vào đây để dùng thử đơn thuốc mẫu An Khang
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

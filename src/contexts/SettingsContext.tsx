@@ -4,6 +4,7 @@ import { speakVietnamese, playAlarmTone } from '../utils/voiceAssistant';
 
 export type FontSize = 'normal' | 'large' | 'xl';
 export type VoiceId = 'female_north' | 'male_north' | 'female_south' | 'male_south';
+export type ThemeMode = 'light' | 'dark';
 
 export interface VoiceSettings {
   voiceId: VoiceId;
@@ -19,6 +20,15 @@ interface SettingsContextType {
   setLanguage: (lang: Language) => void;
   voiceSettings: VoiceSettings;
   setVoiceSettings: (settings: Partial<VoiceSettings>) => void;
+  theme: ThemeMode;
+  setTheme: (theme: ThemeMode) => void;
+  toggleTheme: () => void;
+  overdueAlertEnabled: boolean;
+  setOverdueAlertEnabled: (enabled: boolean) => void;
+  overdueThresholdMinutes: number;
+  setOverdueThresholdMinutes: (mins: number) => void;
+  dailyAiReportEnabled: boolean;
+  setDailyAiReportEnabled: (enabled: boolean) => void;
   t: (key: string, fallback?: string) => string;
   testVoice: (patientName?: string) => void;
 }
@@ -52,13 +62,67 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     return defaultVoiceSettings;
   });
 
+  // 4. Chế độ giao diện (Dark Mode)
+  const [theme, setThemeState] = useState<ThemeMode>(() => {
+    return (localStorage.getItem('heymedi_theme') as ThemeMode) || 'light';
+  });
+
+  // 5. Cấu hình cảnh báo quá giờ uống thuốc
+  const [overdueAlertEnabled, setOverdueAlertEnabledState] = useState<boolean>(() => {
+    const saved = localStorage.getItem('heymedi_overdue_alert_enabled');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const [overdueThresholdMinutes, setOverdueThresholdMinutesState] = useState<number>(() => {
+    const saved = localStorage.getItem('heymedi_overdue_alert_threshold');
+    return saved ? Number(saved) : 30;
+  });
+
+  // 6. Cấu hình báo cáo AI hàng ngày lúc 21:00
+  const [dailyAiReportEnabled, setDailyAiReportEnabledState] = useState<boolean>(() => {
+    const saved = localStorage.getItem('heymedi_daily_ai_report');
+    return saved !== null ? saved === 'true' : true;
+  });
+
   // Cập nhật DOM data-font-size khi cỡ chữ thay đổi
   useEffect(() => {
     document.documentElement.setAttribute('data-font-size', fontSize);
     localStorage.setItem('heymedi_font_size', fontSize);
   }, [fontSize]);
 
-  // Cập nhật ngôn ngữ
+  // Cập nhật DOM class 'dark' khi theme thay đổi
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('heymedi_theme', theme);
+  }, [theme]);
+
+  const setTheme = (t: ThemeMode) => {
+    setThemeState(t);
+  };
+
+  const toggleTheme = () => {
+    setThemeState(prev => (prev === 'light' ? 'dark' : 'light'));
+  };
+
+  const setOverdueAlertEnabled = (enabled: boolean) => {
+    setOverdueAlertEnabledState(enabled);
+    localStorage.setItem('heymedi_overdue_alert_enabled', String(enabled));
+  };
+
+  const setOverdueThresholdMinutes = (mins: number) => {
+    setOverdueThresholdMinutesState(mins);
+    localStorage.setItem('heymedi_overdue_alert_threshold', String(mins));
+  };
+
+  const setDailyAiReportEnabled = (enabled: boolean) => {
+    setDailyAiReportEnabledState(enabled);
+    localStorage.setItem('heymedi_daily_ai_report', String(enabled));
+  };
+
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
     localStorage.setItem('heymedi_language', lang);
@@ -73,7 +137,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const setVoiceSettings = (partial: Partial<VoiceSettings>) => {
     setVoiceSettingsState(prev => {
       const updated = { ...prev, ...partial };
-      // Tự động điều chỉnh pitch theo giọng đọc nếu đổi voiceId
       if (partial.voiceId) {
         if (partial.voiceId === 'male_north') updated.pitch = 0.85;
         else if (partial.voiceId === 'female_north') updated.pitch = 1.12;
@@ -85,7 +148,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // Hàm dịch chuỗi
   const t = (key: string, fallback?: string): string => {
     const entry = translations[key];
     if (entry) {
@@ -94,7 +156,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     return fallback || key;
   };
 
-  // Nghe thử giọng nói trực tiếp
   const testVoice = (name: string = "Bác") => {
     playAlarmTone();
     setTimeout(() => {
@@ -128,6 +189,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setLanguage,
         voiceSettings,
         setVoiceSettings,
+        theme,
+        setTheme,
+        toggleTheme,
+        overdueAlertEnabled,
+        setOverdueAlertEnabled,
+        overdueThresholdMinutes,
+        setOverdueThresholdMinutes,
+        dailyAiReportEnabled,
+        setDailyAiReportEnabled,
         t,
         testVoice
       }}

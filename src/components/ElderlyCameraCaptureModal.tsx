@@ -18,6 +18,7 @@ interface Props {
   title?: string;
   subtitle?: string;
   guideText?: string;
+  confirmButtonText?: string;
   onCaptureComplete: (blob: Blob, previewUrl: string) => void | Promise<void>;
 }
 
@@ -27,6 +28,7 @@ export default function ElderlyCameraCaptureModal({
   title = "Chụp Ảnh Vỉ Thuốc Minh Chứng",
   subtitle = "Gửi hình ảnh thuốc đã uống cho người nhà yên tâm",
   guideText = "ĐẶT VỈ THUỐC HOẶC THUỐC TRÊN TAY VÀO GIỮA KHUNG HÌNH",
+  confirmButtonText = "XÁC NHẬN GỬI CHO CON",
   onCaptureComplete
 }: Props) {
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -300,7 +302,7 @@ export default function ElderlyCameraCaptureModal({
                 ) : (
                   <Check size={20} strokeWidth={3} />
                 )}
-                <span>XÁC NHẬN GỬI CHO CON</span>
+                <span>{confirmButtonText}</span>
               </button>
             </div>
           ) : !cameraError ? (

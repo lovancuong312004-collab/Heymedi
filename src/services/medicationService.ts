@@ -489,6 +489,83 @@ export async function deleteMedication(medicationId: string): Promise<void> {
   }
 }
 
+export interface UpdateMedicationCourseParams {
+  medicationId: string;
+  patientId: string;
+  name: string;
+  dosage: string;
+  instructions: string;
+  dailyTimes?: string[];
+  durationDays?: number;
+}
+
+/**
+ * Cập nhật lộ trình thuốc (sửa tên, liều, chỉ định, và cập nhật lại các cữ nhắc tương lai)
+ */
+export async function updateMedicationCourse(params: UpdateMedicationCourseParams): Promise<void> {
+  const { medicationId, patientId, name, dosage, instructions, dailyTimes, durationDays } = params;
+  if (!medicationId || !patientId) return;
+
+  try {
+    // 1. Cập nhật thông tin thuốc trong bảng medications
+    const { error: medError } = await supabase
+      .from('medications')
+      .update({
+        name: name.trim(),
+        dosage: dosage.trim(),
+        instructions: instructions.trim()
+      })
+      .eq('id', medicationId);
+
+    if (medError) throw medError;
+
+    // 2. Nếu người dùng điều chỉnh giờ uống trong ngày, cập nhật lại các cữ nhắc chưa uống (pending)
+    if (dailyTimes && dailyTimes.length > 0) {
+      const now = new Date();
+      const nowIso = now.toISOString();
+
+      // Xóa các cữ pending tương lai của thuốc này
+      await supabase
+        .from('reminders')
+        .delete()
+        .eq('medication_id', medicationId)
+        .eq('status', 'pending')
+        .gte('scheduled_time', nowIso);
+
+      // Tạo các cữ mới theo giờ vừa sửa
+      const days = durationDays || 7;
+      const remindersToInsert: any[] = [];
+
+      for (let d = 0; d < days; d++) {
+        const currentDay = new Date(now);
+        currentDay.setDate(currentDay.getDate() + d);
+
+        for (const timeStr of dailyTimes) {
+          const [h, m] = timeStr.split(':').map(Number);
+          const schedDate = new Date(currentDay);
+          schedDate.setHours(isNaN(h) ? 8 : h, isNaN(m) ? 0 : m, 0, 0);
+
+          if (schedDate.getTime() > now.getTime() - 10 * 60 * 1000) {
+            remindersToInsert.push({
+              medication_id: medicationId,
+              patient_id: patientId,
+              scheduled_time: schedDate.toISOString(),
+              status: 'pending'
+            });
+          }
+        }
+      }
+
+      if (remindersToInsert.length > 0) {
+        await supabase.from('reminders').insert(remindersToInsert);
+      }
+    }
+  } catch (err) {
+    console.error("updateMedicationCourse error:", err);
+    throw err;
+  }
+}
+
 export interface ActiveMedicationItem extends Medication {
   totalReminders?: number;
   pendingReminders?: number;
