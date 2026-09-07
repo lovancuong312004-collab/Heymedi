@@ -1,3 +1,5 @@
+import { supabase } from '../lib/supabase';
+
 export interface SavedSosAlert {
   id: string;
   patient_id: string;
@@ -73,6 +75,18 @@ export function recordSosAlert(payload: {
     if (crossTabChannel) {
       crossTabChannel.postMessage({ type: 'SOS_ALERT_RECORDED', alert: newAlert });
     }
+
+    // Đẩy backup lên Supabase (bảng emergency_alerts)
+    supabase.from('emergency_alerts').insert({
+      id: newAlert.id,
+      patient_id: newAlert.patient_id,
+      patient_name: newAlert.patient_name,
+      lat: newAlert.lat,
+      lng: newAlert.lng,
+      google_maps_url: newAlert.google_maps_url,
+      status: newAlert.status,
+      created_at: newAlert.timestamp
+    }).then(() => {}, () => {});
 
     return newAlert;
   } catch (e) {
