@@ -12,7 +12,8 @@ import {
   CalendarCheck,
   Camera,
   Volume2,
-  X
+  X,
+  AlertCircle
 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import { cn } from "./lib/utils";
@@ -581,6 +582,51 @@ export default function MedsScreen({ user }: Props) {
   );
 }
 
+export function getSessionTimeTheme(timeStr: string) {
+  const hour = parseInt(timeStr.split(':')[0], 10) || 8;
+  if (hour < 11) {
+    return {
+      period: 'SÁNG',
+      icon: '🌅',
+      timeBg: 'bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-amber-500/20',
+      badgeBg: 'bg-amber-100 text-amber-900 border-amber-300',
+      activeBorder: 'border-amber-300 hover:border-amber-400',
+      gradientBg: 'from-amber-500/10 via-orange-500/5 to-transparent',
+      chipBg: 'bg-amber-100/80 text-amber-900'
+    };
+  } else if (hour < 15) {
+    return {
+      period: 'TRƯA',
+      icon: '☀️',
+      timeBg: 'bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-blue-500/20',
+      badgeBg: 'bg-sky-100 text-sky-900 border-sky-300',
+      activeBorder: 'border-sky-300 hover:border-sky-400',
+      gradientBg: 'from-sky-500/10 via-blue-500/5 to-transparent',
+      chipBg: 'bg-sky-100/80 text-sky-900'
+    };
+  } else if (hour < 21) {
+    return {
+      period: 'TỐI',
+      icon: '🌇',
+      timeBg: 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-indigo-500/20',
+      badgeBg: 'bg-indigo-100 text-indigo-900 border-indigo-300',
+      activeBorder: 'border-indigo-300 hover:border-indigo-400',
+      gradientBg: 'from-indigo-500/10 via-purple-500/5 to-transparent',
+      chipBg: 'bg-indigo-100/80 text-indigo-900'
+    };
+  } else {
+    return {
+      period: 'ĐÊM',
+      icon: '🌙',
+      timeBg: 'bg-gradient-to-br from-purple-700 to-slate-800 text-white shadow-purple-900/20',
+      badgeBg: 'bg-purple-100 text-purple-900 border-purple-300',
+      activeBorder: 'border-purple-300 hover:border-purple-400',
+      gradientBg: 'from-purple-500/10 via-slate-500/5 to-transparent',
+      chipBg: 'bg-purple-100/80 text-purple-900'
+    };
+  }
+}
+
 function DoseSessionCard({
   session,
   isTodaySelected,
@@ -600,6 +646,16 @@ function DoseSessionCard({
 }) {
   const [isExpanded, setIsExpanded] = useState(!session.isAllTaken);
   const isDone = session.isAllTaken;
+  const theme = getSessionTimeTheme(session.timeStr);
+
+  const isOverdue = useMemo(() => {
+    if (isDone || !isTodaySelected) return false;
+    const [h, m] = session.timeStr.split(':').map(Number);
+    const now = new Date();
+    const scheduledTime = new Date();
+    scheduledTime.setHours(h, m, 0, 0);
+    return now.getTime() - scheduledTime.getTime() > 15 * 60000;
+  }, [isDone, isTodaySelected, session.timeStr]);
 
   const handleSpeakSession = () => {
     const cleanNames = session.items.map(m => cleanMedicineTitle(m.medication?.name || "Thuốc")).join(", ");
@@ -615,31 +671,43 @@ function DoseSessionCard({
     <div className={cn(
       "border-2 rounded-3xl overflow-hidden transition-all shadow-xs",
       isDone 
-        ? "bg-emerald-50/40 border-emerald-200" 
-        : "bg-white border-gray-200 hover:border-blue-300"
+        ? "bg-emerald-50/40 border-emerald-300/80" 
+        : isOverdue
+          ? "bg-rose-50/40 border-rose-300 hover:border-rose-400"
+          : `bg-white ${theme.activeBorder}`
     )}>
       {/* Header cữ thuốc (Bấm vào để mở rộng / thu gọn) */}
       <div 
         onClick={() => setIsExpanded(!isExpanded)}
-        className="p-3.5 sm:p-4 flex items-center justify-between cursor-pointer select-none bg-gradient-to-r from-transparent via-transparent to-gray-50/40"
+        className={cn(
+          "p-3.5 sm:p-4 flex items-center justify-between cursor-pointer select-none bg-gradient-to-r",
+          isDone 
+            ? "from-emerald-500/10 to-transparent" 
+            : isOverdue 
+              ? "from-rose-500/10 to-transparent" 
+              : theme.gradientBg
+        )}
       >
         <div className="flex items-center gap-3 min-w-0">
           <div className={cn(
-            "w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black shrink-0 border",
+            "w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black shrink-0 shadow-xs",
             isDone 
-              ? "bg-emerald-100/80 border-emerald-300 text-emerald-800" 
-              : "bg-blue-50 border-blue-200 text-primary"
+              ? "bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-emerald-500/20" 
+              : isOverdue
+                ? "bg-gradient-to-br from-rose-500 to-red-600 text-white shadow-red-500/20"
+                : `${theme.timeBg} shadow-sm`
           )}>
             <span className="text-base font-black leading-tight">{session.timeStr}</span>
-            <span className="text-[9px] font-bold uppercase opacity-85">
-              {session.timeStr.split(':')[0] < '11' ? 'SÁNG' : session.timeStr.split(':')[0] < '15' ? 'TRƯA' : 'TỐI'}
+            <span className="text-[9px] font-bold uppercase tracking-wider opacity-90 flex items-center gap-0.5">
+              <span>{theme.icon}</span>
+              <span>{theme.period}</span>
             </span>
           </div>
 
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
               <h3 className="text-base font-black text-[#1a2b4b] truncate">{session.mealLabel}</h3>
-              <span className="text-[11px] font-bold bg-blue-100/70 text-blue-800 px-2 py-0.5 rounded-full shrink-0">
+              <span className={cn("text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0", theme.chipBg)}>
                 {session.items.length} loại thuốc
               </span>
             </div>
@@ -653,12 +721,17 @@ function DoseSessionCard({
 
         <div className="flex items-center gap-2 shrink-0 ml-2">
           {isDone ? (
-            <span className="inline-flex items-center gap-1 text-xs font-black text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-200">
-              <Check size={13} strokeWidth={3} />
+            <span className="inline-flex items-center gap-1 text-xs font-black text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-300">
+              <CheckCircle2 size={13} className="text-emerald-700" />
               <span>Đã uống đủ</span>
             </span>
+          ) : isOverdue ? (
+            <span className="inline-flex items-center gap-1 text-xs font-black text-rose-800 bg-rose-100 px-2.5 py-1 rounded-full border border-rose-300 animate-pulse">
+              <AlertCircle size={13} className="text-rose-600" />
+              <span>Quá giờ</span>
+            </span>
           ) : (
-            <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full border border-amber-200">
+            <span className={cn("text-xs font-bold px-2.5 py-1 rounded-full border", theme.badgeBg)}>
               {session.takenCount}/{session.items.length} đã uống
             </span>
           )}

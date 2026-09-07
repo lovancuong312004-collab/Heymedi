@@ -151,18 +151,19 @@ export default function MedicationAlertScreen({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#FFF9F8] flex flex-col justify-between p-4 sm:p-5 text-center font-sans max-h-[100dvh] overflow-hidden select-none animate-fade-in">
+    <div className="fixed inset-0 z-50 bg-black/60 sm:backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 font-sans select-none animate-fade-in">
+      <div className="w-full h-full sm:h-[92vh] sm:max-h-[760px] max-w-md bg-[#FFF9F8] sm:rounded-3xl sm:shadow-2xl sm:border sm:border-gray-200 flex flex-col justify-between p-4 sm:p-5 text-center relative overflow-hidden">
       
-      {/* Nút đóng / hoãn báo lại */}
-      {onSnooze && (
-        <button 
-          onClick={onSnooze}
-          className="absolute top-4 right-4 w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-md border border-gray-100 text-gray-500 active:scale-95 transition-all z-20 cursor-pointer"
-          title="Hoãn báo lại"
-        >
-          <X size={22} strokeWidth={2.5} />
-        </button>
-      )}
+        {/* Nút đóng / hoãn báo lại */}
+        {onSnooze && (
+          <button 
+            onClick={onSnooze}
+            className="absolute top-3.5 right-3.5 w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-md border border-gray-100 text-gray-500 active:scale-95 transition-all z-20 cursor-pointer"
+            title="Hoãn báo lại"
+          >
+            <X size={22} strokeWidth={2.5} />
+          </button>
+        )}
 
       {/* 1. Header: Chuông báo & Khung giờ Cữ thuốc (Gọn gàng, không chiếm quá nhiều chiều cao) */}
       <div className="flex flex-col items-center w-full shrink-0 pt-1">
@@ -424,6 +425,7 @@ export default function MedicationAlertScreen({
       )}
 
       <style>{`@keyframes ring { 0%,100% { transform: rotate(-15deg); } 50% { transform: rotate(15deg); } }`}</style>
+      </div>
     </div>
   );
 }

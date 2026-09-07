@@ -24,6 +24,8 @@ import AddMedModal from "./caregiver/AddMedModal";
 import { FamilyProvider, useFamily } from "./contexts/FamilyContext";
 import { recordMissedCall, getUnreadMissedCallCount } from "./services/missedCallService";
 import { savePillProof } from "./services/medicationService";
+import { recordSosAlert } from "./services/emergencySosService";
+import { realtimeBridge } from "./services/realtimeBridge";
 import { supabase } from "./lib/supabase";
 import { useSettings } from "./contexts/SettingsContext";
 
@@ -120,6 +122,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
       contactRole: incomingCall.callerRole,
       avatarUrl: incomingCall.callerAvatar,
       isSOS: incomingCall.isSOS,
+      initialVideo: true,
       isInitiator: false,
     });
     setIncomingCall(null);
@@ -151,17 +154,22 @@ function CaregiverAppContent({ user, onLogout }: Props) {
 
   // Global Emergency SOS & Medication Proof & Incoming Call Listener
   useEffect(() => {
+    const handleEmergencyPayload = (payload: SOSAlertPayload) => {
+      if (!payload) return;
+      // Lưu vĩnh viễn vào danh sách thông báo SOS để người chăm sóc xem lại mọi lúc
+      recordSosAlert(payload);
+
+      // Khớp đúng người bệnh hoặc chưa liên kết hoặc payload chưa có ID
+      if (!linkedPatientId || payload.patient_id === linkedPatientId || !payload.patient_id || payload.patient_id === "patient_unknown") {
+        setPillProofAlert(null); // Tránh chồng đè modal minh chứng thuốc phía dưới
+        setSosAlert(payload);
+      }
+    };
+
     const channel = supabase.channel('sos-emergency-alerts')
       .on('broadcast', { event: 'EMERGENCY' }, (event) => {
         console.log("Global Caregiver received SOS Broadcast:", event);
-        const payload = event.payload as SOSAlertPayload;
-        if (payload) {
-          // Khớp đúng người bệnh hoặc chưa liên kết hoặc payload chưa có ID
-          if (!linkedPatientId || payload.patient_id === linkedPatientId || !payload.patient_id || payload.patient_id === "patient_unknown") {
-            setPillProofAlert(null); // Tránh chồng đè modal minh chứng thuốc phía dưới
-            setSosAlert(payload);
-          }
-        }
+        handleEmergencyPayload(event.payload as SOSAlertPayload);
       })
       .on('broadcast', { event: 'INCOMING_CALL' }, (event) => {
         console.log("Caregiver received INCOMING_CALL:", event);
@@ -226,9 +234,28 @@ function CaregiverAppContent({ user, onLogout }: Props) {
       .subscribe();
     globalChannelRef.current = channel;
 
+    const unsubscribeBridge = realtimeBridge.subscribe((eventName, payload) => {
+      if (eventName === 'EMERGENCY') {
+        handleEmergencyPayload(payload);
+      } else if (eventName === 'INCOMING_CALL') {
+        if (!payload || payload.caller_id === user?.id) return;
+        if (payload.target_id && payload.target_id !== user?.id) return;
+        if (!payload.target_id && linkedPatientId && payload.caller_id !== linkedPatientId) return;
+
+        setIncomingCall({
+          callId: payload.call_id,
+          callerName: payload.caller_name || patientName,
+          callerRole: payload.caller_role || "Người bệnh",
+          callerAvatar: payload.caller_avatar || patientInfo?.avatar_url,
+          isSOS: payload.is_sos,
+        });
+      }
+    });
+
     return () => {
       supabase.removeChannel(channel);
       globalChannelRef.current = null;
+      unsubscribeBridge();
     };
   }, [linkedPatientId, user?.id]);
 

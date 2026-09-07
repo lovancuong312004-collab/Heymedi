@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { AlertTriangle, PhoneOff, MapPin, CheckCircle2, Loader2, Phone } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { recordSosAlert } from "../services/emergencySosService";
+import { realtimeBridge } from "../services/realtimeBridge";
 
 interface Props {
   isOpen: boolean;
@@ -92,6 +94,13 @@ export default function SOSModal({
         timestamp: new Date().toISOString()
       };
 
+      // 1. Lưu vĩnh viễn vào hệ thống
+      recordSosAlert(payload);
+
+      // 2. Phát qua Realtime Bridge (đồng bộ đa tab tức thì 0ms)
+      realtimeBridge.broadcast('EMERGENCY', payload);
+
+      // 3. Phát qua Supabase Channel (cho thiết bị từ xa)
       channel.subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await channel.send({

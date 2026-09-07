@@ -9,6 +9,7 @@ import IncomingCallModal from "./components/IncomingCallModal";
 import CallModal from "./caregiver/CallModal";
 import { silentAudioUnlock } from "./utils/voiceAssistant";
 import { recordMissedCall } from "./services/missedCallService";
+import { realtimeBridge } from "./services/realtimeBridge";
 import { supabase } from "./lib/supabase";
 import { useSettings } from "./contexts/SettingsContext";
 
@@ -164,9 +165,49 @@ export default function ElderlyApp({ user, onLogout }: Props) {
       .subscribe();
     globalChannelRef.current = channel;
 
+    const unsubscribeBridge = realtimeBridge.subscribe((eventName, payload) => {
+      if (eventName === 'INCOMING_CALL') {
+        if (!payload || payload.caller_id === user?.id) return;
+        if (payload.target_id && payload.target_id !== user?.id) return;
+
+        if (payload.is_sos) {
+          const ch = globalChannelRef.current || supabase.channel('sos-emergency-alerts');
+          ch.send({
+            type: 'broadcast',
+            event: 'CALL_ACCEPTED',
+            payload: {
+              call_id: payload.call_id,
+              accepted_by_id: user?.id,
+              accepted_by_name: user?.user_metadata?.full_name || "Bác",
+            }
+          }).catch(() => {});
+
+          setActiveCall({
+            callId: payload.call_id,
+            contactName: payload.caller_name || "Người thân khẩn cấp",
+            contactRole: "Cuộc gọi SOS Khẩn cấp",
+            avatarUrl: payload.caller_avatar,
+            isSOS: true,
+            initialVideo: true,
+            isInitiator: false,
+          });
+          return;
+        }
+
+        setIncomingCall({
+          callId: payload.call_id,
+          callerName: payload.caller_name || "Người thân",
+          callerRole: payload.caller_role || "Người chăm sóc",
+          callerAvatar: payload.caller_avatar,
+          isSOS: payload.is_sos,
+        });
+      }
+    });
+
     return () => {
       supabase.removeChannel(channel);
       globalChannelRef.current = null;
+      unsubscribeBridge();
     };
   }, [user?.id]);
 
@@ -189,6 +230,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
       contactRole: incomingCall.callerRole,
       avatarUrl: incomingCall.callerAvatar,
       isSOS: incomingCall.isSOS,
+      initialVideo: true,
       isInitiator: false,
     });
     setIncomingCall(null);

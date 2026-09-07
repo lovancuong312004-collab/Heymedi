@@ -10,13 +10,24 @@ import {
   Clock,
   PhoneOff,
   Camera,
-  X
+  X,
+  MapPin,
+  ExternalLink,
+  ShieldAlert,
+  Trash2
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useFamily } from "../contexts/FamilyContext";
 import { supabase } from "../lib/supabase";
 import { getMissedCalls, markMissedCallsAsRead, type MissedCall } from "../services/missedCallService";
+import { 
+  getSosAlerts, 
+  resolveSosAlert, 
+  deleteSosAlert, 
+  type SavedSosAlert 
+} from "../services/emergencySosService";
 import { getMedicationTimingOffset, getPillProof } from "../services/medicationService";
+import { cleanMedicineTitle } from "../utils/geminiVision";
 import CallModal from "./CallModal";
 
 interface Props {
@@ -42,9 +53,10 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
   const { linkedPatientId, patientInfo } = useFamily();
   const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Người thân");
 
-  const [filter, setFilter] = useState<"all" | "overdue" | "taken">("all");
+  const [filter, setFilter] = useState<"all" | "overdue" | "taken" | "sos">("all");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [missedCalls, setMissedCalls] = useState<MissedCall[]>([]);
+  const [sosAlerts, setSosAlerts] = useState<SavedSosAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [callingMedNote, setCallingMedNote] = useState<string | null>(null);
   const [viewingPhoto, setViewingPhoto] = useState<{ url: string; medName: string } | null>(null);
@@ -52,13 +64,21 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
   useEffect(() => {
     markMissedCallsAsRead();
     setMissedCalls(getMissedCalls());
+    setSosAlerts(getSosAlerts());
 
     const handleMissed = () => {
       setMissedCalls(getMissedCalls());
     };
+    const handleSos = () => {
+      setSosAlerts(getSosAlerts());
+    };
+
     window.addEventListener('heymedi_missed_calls_changed', handleMissed);
+    window.addEventListener('heymedi_sos_alerts_changed', handleSos);
+
     return () => {
       window.removeEventListener('heymedi_missed_calls_changed', handleMissed);
+      window.removeEventListener('heymedi_sos_alerts_changed', handleSos);
     };
   }, []);
 
@@ -100,7 +120,7 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
 
       (data || []).forEach((r: any) => {
         const med = Array.isArray(r.medication) ? r.medication[0] : r.medication;
-        const medName = med?.name || "Thuốc";
+        const medName = cleanMedicineTitle(med?.name || "Thuốc");
         const dosage = med?.dosage || "";
         const scheduledDate = new Date(r.scheduled_time);
         const scheduledTimeStr = scheduledDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
@@ -208,6 +228,110 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
         </div>
       </div>
 
+      {/* Danh sách Cảnh Báo SOS Khẩn Cấp Gần Đây */}
+      {sosAlerts.length > 0 && (filter === "all" || filter === "sos") && (
+        <div className="bg-gradient-to-r from-red-600/15 via-rose-600/10 to-amber-500/10 border-2 border-red-500 rounded-3xl p-4 shadow-md animate-fade-in space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-red-700 font-black text-xs uppercase tracking-wider">
+              <ShieldAlert size={18} className="text-red-600 animate-bounce" />
+              <span>Cảnh báo SOS khẩn cấp ({sosAlerts.length})</span>
+            </div>
+            <span className="text-[10px] text-white font-black bg-red-600 px-2.5 py-0.5 rounded-full shadow-sm animate-pulse">
+              Ưu tiên xử lý
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-2.5">
+            {sosAlerts.map((alert) => (
+              <div 
+                key={alert.id}
+                className={cn(
+                  "bg-white rounded-2xl p-3.5 border flex flex-col gap-2.5 shadow-sm relative overflow-hidden transition-all",
+                  alert.status === 'active' ? "border-red-200 bg-rose-50/30" : "border-gray-200 bg-gray-50/70 opacity-80"
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0 shadow-xs">
+                      <ShieldAlert size={22} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-black text-[#1a2b4b] truncate">{alert.patient_name}</h4>
+                        {alert.status === 'resolved' ? (
+                          <span className="text-[9px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.2 rounded-full">
+                            Đã an toàn
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-black bg-red-100 text-red-700 px-2 py-0.2 rounded-full animate-pulse">
+                            Cần hỗ trợ
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-red-600 font-bold">
+                        Phát tín hiệu SOS lúc {alert.formattedTime} ({alert.formattedDate})
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => deleteSosAlert(alert.id)}
+                    className="text-gray-400 hover:text-red-500 p-1 transition-colors cursor-pointer"
+                    title="Xóa thông báo này"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+
+                {/* Vị trí GPS & Nút Mở Google Maps */}
+                {(alert.google_maps_url || (alert.lat && alert.lng)) && (
+                  <div className="bg-red-50/80 border border-red-200/80 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs text-red-800 font-semibold min-w-0">
+                      <MapPin size={15} className="text-red-600 shrink-0" />
+                      <span className="truncate">
+                        Tọa độ: {alert.lat ? alert.lat.toFixed(5) : ''}, {alert.lng ? alert.lng.toFixed(5) : ''}
+                      </span>
+                    </div>
+
+                    <a
+                      href={alert.google_maps_url || `https://www.google.com/maps?q=${alert.lat},${alert.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white text-[11px] font-black px-2.5 py-1 rounded-lg shadow-xs active:scale-95 transition-all shrink-0 cursor-pointer"
+                    >
+                      <ExternalLink size={12} />
+                      <span>Xem Google Maps</span>
+                    </a>
+                  </div>
+                )}
+
+                {/* Nút hành động */}
+                <div className="flex items-center justify-end gap-2 pt-1 border-t border-gray-100">
+                  {alert.status === 'active' && (
+                    <button
+                      type="button"
+                      onClick={() => resolveSosAlert(alert.id)}
+                      className="text-xs font-bold text-gray-500 hover:text-emerald-600 bg-gray-100 hover:bg-emerald-50 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+                    >
+                      Đã xử lý an toàn
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => _onOpenCall ? _onOpenCall() : setCallingMedNote("Gọi điện khẩn cấp SOS")}
+                    className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
+                  >
+                    <Phone size={13} className="fill-white" />
+                    <span>Gọi lại khẩn cấp</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Danh sách Cuộc Gọi Nhỡ Gần Đây */}
       {missedCalls.length > 0 && (
         <div className="bg-gradient-to-r from-red-500/10 via-rose-500/10 to-amber-500/10 border-2 border-red-300 rounded-3xl p-4 shadow-sm animate-fade-in">
@@ -250,7 +374,27 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
       )}
 
       {/* Summary Status Badges */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className={cn("grid gap-3", sosAlerts.length > 0 ? "grid-cols-3" : "grid-cols-2")}>
+        {sosAlerts.length > 0 && (
+          <div 
+            onClick={() => setFilter("sos")}
+            className={cn(
+              "p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between",
+              filter === "sos" ? "border-red-500 bg-red-50/90 shadow-sm" : "border-gray-100 bg-white"
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-red-100 text-red-600 flex items-center justify-center font-bold">
+                <ShieldAlert size={18} />
+              </div>
+              <div>
+                <span className="text-[11px] text-gray-500 font-semibold block">SOS</span>
+                <span className="text-base font-black text-red-600">{sosAlerts.length}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div 
           onClick={() => setFilter("overdue")}
           className={cn(
@@ -291,7 +435,8 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
       {/* Filter Tabs */}
       <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
         {[
-          { key: "all", label: `Tất cả (${notifications.length})`, icon: null },
+          { key: "all", label: `Tất cả (${notifications.length + sosAlerts.length})`, icon: null },
+          ...(sosAlerts.length > 0 ? [{ key: "sos", label: `Khẩn cấp SOS (${sosAlerts.length})`, icon: (active: boolean) => <ShieldAlert size={15} className={active ? "text-white" : "text-red-500"} /> }] : []),
           { key: "overdue", label: `Quá giờ (${overdueCount})`, icon: (active: boolean) => <AlertTriangle size={15} className={active ? "text-white" : "text-danger"} /> },
           { key: "taken", label: `Đã uống (${takenCount})`, icon: (active: boolean) => <CheckSquare size={15} className={active ? "text-white" : "text-success"} /> }
         ].map((tab) => {

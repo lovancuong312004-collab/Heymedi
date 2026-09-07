@@ -25,6 +25,7 @@ import { Lunar } from "lunar-javascript";
 import { cn } from "../lib/utils";
 import { useFamily } from "../contexts/FamilyContext";
 import { cleanMedicineTitle } from "../utils/geminiVision";
+import { getSessionTimeTheme } from "../MedsScreen";
 import ElderlyCameraCaptureModal from "../components/ElderlyCameraCaptureModal";
 import { 
   getScheduleByDate, 
@@ -1363,29 +1364,58 @@ function CaregiverDoseSessionCard({
 }) {
   const [isExpanded, setIsExpanded] = useState(!session.isAllTaken);
   const isDone = session.isAllTaken;
+  const theme = getSessionTimeTheme(session.timeStr);
+
+  const isOverdue = useMemo(() => {
+    if (isDone) return false;
+    const [h, m] = session.timeStr.split(':').map(Number);
+    const now = new Date();
+    const scheduledTime = new Date(session.scheduled_time);
+    scheduledTime.setHours(h, m, 0, 0);
+    return now.getTime() - scheduledTime.getTime() > 15 * 60000;
+  }, [isDone, session.timeStr, session.scheduled_time]);
 
   return (
     <div className={cn(
       "border-2 rounded-2xl overflow-hidden transition-all shadow-2xs",
-      isDone ? "bg-emerald-50/40 border-emerald-200" : "bg-white border-gray-200 hover:border-blue-300"
+      isDone 
+        ? "bg-emerald-50/40 border-emerald-300/80" 
+        : isOverdue 
+          ? "bg-rose-50/40 border-rose-300 hover:border-rose-400" 
+          : `bg-white ${theme.activeBorder}`
     )}>
       {/* Header cữ thuốc */}
       <div 
         onClick={() => setIsExpanded(!isExpanded)}
-        className="p-3 sm:p-3.5 flex items-center justify-between cursor-pointer select-none bg-gradient-to-r from-transparent to-gray-50/50"
+        className={cn(
+          "p-3 sm:p-3.5 flex items-center justify-between cursor-pointer select-none bg-gradient-to-r",
+          isDone 
+            ? "from-emerald-500/10 to-transparent" 
+            : isOverdue 
+              ? "from-rose-500/10 to-transparent" 
+              : theme.gradientBg
+        )}
       >
         <div className="flex items-center gap-3 min-w-0">
           <div className={cn(
-            "w-12 h-12 rounded-xl flex flex-col items-center justify-center font-black text-xs shrink-0 border",
-            isDone ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-blue-50 text-primary border-blue-200"
+            "w-12 h-12 rounded-xl flex flex-col items-center justify-center font-black text-xs shrink-0 shadow-xs",
+            isDone 
+              ? "bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-emerald-500/20" 
+              : isOverdue 
+                ? "bg-gradient-to-br from-rose-500 to-red-600 text-white shadow-red-500/20" 
+                : `${theme.timeBg} shadow-sm`
           )}>
             <span className="text-sm font-black leading-none">{session.timeStr}</span>
+            <span className="text-[8px] font-bold uppercase tracking-wider opacity-90 flex items-center gap-0.5 mt-0.5">
+              <span>{theme.icon}</span>
+              <span>{theme.period}</span>
+            </span>
           </div>
 
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 mb-0.5">
               <span className="font-extrabold text-sm sm:text-base text-[#1a2b4b] truncate">{session.mealLabel}</span>
-              <span className="text-[10px] font-bold bg-blue-100/70 text-blue-800 px-2 py-0.2 rounded-full shrink-0">
+              <span className={cn("text-[10px] font-bold px-2 py-0.2 rounded-full shrink-0", theme.chipBg)}>
                 {session.items.length} thuốc
               </span>
             </div>
@@ -1397,12 +1427,17 @@ function CaregiverDoseSessionCard({
 
         <div className="flex items-center gap-2 shrink-0 ml-2">
           {isDone ? (
-            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+            <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
               <Check size={11} strokeWidth={3} />
               <span>Đã uống đủ</span>
             </span>
+          ) : isOverdue ? (
+            <span className="text-[11px] font-bold text-rose-800 bg-rose-100 border border-rose-300 px-2.5 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+              <AlertTriangle size={11} className="text-rose-600" />
+              <span>Quá giờ</span>
+            </span>
           ) : (
-            <span className="text-[11px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2.5 py-0.5 rounded-full">
+            <span className={cn("text-[11px] font-bold px-2.5 py-0.5 rounded-full border", theme.badgeBg)}>
               {session.takenCount}/{session.items.length} đã uống
             </span>
           )}

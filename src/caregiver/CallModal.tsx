@@ -83,7 +83,7 @@ export default function CallModal({
   // Real Hardware Media Controls
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(true);
-  const [isVideo, setIsVideo] = useState(isSOS ? true : initialVideo);
+  const [isVideo, setIsVideo] = useState(isSOS ? true : (initialVideo !== undefined ? initialVideo : true));
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   
   // Remote Peer States
@@ -255,15 +255,24 @@ export default function CallModal({
           remoteStreamRef.current = remoteStream;
         }
 
+        if (event.track.kind === 'video') {
+          setRemoteIsVideo(true);
+        }
+
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
+          remoteVideoRef.current.onloadedmetadata = () => {
+            remoteVideoRef.current?.play().catch(e => console.warn("Video play onloadedmetadata err:", e));
+          };
           remoteVideoRef.current.play().catch(e => {
             console.warn("Video play err:", e);
-            if (e.name === "NotAllowedError") setIsAudioBlocked(true);
           });
         }
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = remoteStream;
+          remoteAudioRef.current.onloadedmetadata = () => {
+            remoteAudioRef.current?.play().catch(e => console.warn("Audio play onloadedmetadata err:", e));
+          };
           remoteAudioRef.current.play().catch(e => {
             console.warn("Audio play err:", e);
             if (e.name === "NotAllowedError") setIsAudioBlocked(true);
@@ -575,14 +584,35 @@ export default function CallModal({
   };
 
   // Bật/Tắt Camera thực tế (Video Track)
-  const toggleVideoMode = () => {
+  const toggleVideoMode = async () => {
     const next = !isVideo;
     setIsVideo(next);
-    if (localStreamRef.current) {
-      localStreamRef.current.getVideoTracks().forEach(track => {
-        track.enabled = next;
-      });
+
+    const existingTrack = localStreamRef.current?.getVideoTracks()[0];
+    if (existingTrack) {
+      existingTrack.enabled = next;
+    } else if (next) {
+      try {
+        const vidStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode },
+          audio: false
+        });
+        const newTrack = vidStream.getVideoTracks()[0];
+        if (newTrack && localStreamRef.current) {
+          localStreamRef.current.addTrack(newTrack);
+          if (pcRef.current) {
+            pcRef.current.addTrack(newTrack, localStreamRef.current);
+          }
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = localStreamRef.current;
+            localVideoRef.current.play().catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.warn("Could not acquire new video track:", err);
+      }
     }
+
     if (pcRef.current) {
       pcRef.current.getSenders().forEach(sender => {
         if (sender.track && sender.track.kind === 'video') {
@@ -675,8 +705,6 @@ export default function CallModal({
     return `${String(mins).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`;
   };
 
-  const showVideoOverlay = callStatus === "connected" && isVideo;
-
   return (
     <div 
       onClick={handleModalInteraction}
@@ -720,10 +748,10 @@ export default function CallModal({
           ref={remoteVideoRef}
           autoPlay
           playsInline
-          muted={!isSpeaker}
+          muted // BẮT BUỘC MUTED TRÊN THẺ VIDEO ĐỂ BROWSER KHÔNG CHẶN AUTOPLAY (Âm thanh chạy riêng qua thẻ audio)
           className={cn(
             "absolute inset-0 w-full h-full object-cover z-0 transition-opacity duration-300",
-            showVideoOverlay && hasRemoteStream && remoteIsVideo ? "opacity-100" : "opacity-0 pointer-events-none"
+            callStatus === "connected" && hasRemoteStream && remoteIsVideo ? "opacity-100" : "opacity-0 pointer-events-none"
           )}
         />
 
@@ -744,8 +772,8 @@ export default function CallModal({
           </span>
         </div>
 
-        {/* 3. GIAO DIỆN AVATAR (KHI ĐANG ĐỔ CHUÔNG HOẶC CHẾ ĐỘ THOẠI KHÔNG CAM) */}
-        {(!showVideoOverlay || !hasRemoteStream || !remoteIsVideo) && (
+        {/* 3. GIAO DIỆN AVATAR (KHI ĐANG ĐỔ CHUÔNG HOẶC ĐỐI PHƯƠNG CHƯA TRUYỀN CAM) */}
+        {!(callStatus === "connected" && hasRemoteStream && remoteIsVideo) && (
           <div className="flex flex-col items-center gap-3 pt-6 z-10 text-center w-full">
             <div className="relative">
               <div className={`w-24 h-24 rounded-full overflow-hidden border-4 shadow-xl flex items-center justify-center bg-slate-800 ${
