@@ -15,14 +15,17 @@ interface Props {
 interface TimeSlot {
   id: string;
   label: string;
+  mealRelation: string;
   defaultTime: string;
 }
 
 const AVAILABLE_SLOTS: TimeSlot[] = [
-  { id: "morning", label: "Sáng", defaultTime: "08:00" },
-  { id: "noon", label: "Trưa", defaultTime: "12:00" },
-  { id: "evening", label: "Tối", defaultTime: "20:00" },
-  { id: "bedtime", label: "Trước ngủ", defaultTime: "22:00" },
+  { id: "morning_post", label: "Sáng (Sau ăn)", mealRelation: "Sau ăn sáng", defaultTime: "08:00" },
+  { id: "morning_pre", label: "Sáng (Trước ăn)", mealRelation: "Trước ăn sáng", defaultTime: "06:45" },
+  { id: "noon_post", label: "Trưa (Sau ăn)", mealRelation: "Sau ăn trưa", defaultTime: "12:30" },
+  { id: "evening_post", label: "Tối (Sau ăn)", mealRelation: "Sau ăn tối", defaultTime: "19:30" },
+  { id: "bedtime", label: "Trước khi ngủ", mealRelation: "Trước ngủ", defaultTime: "21:30" },
+  { id: "sos", label: "Khi đau / Cần", mealRelation: "Khi đau", defaultTime: "12:30" },
 ];
 
 export default function AddMedModal({ isOpen, onClose, onAdd, patientId }: Props) {
@@ -48,11 +51,11 @@ export default function AddMedModal({ isOpen, onClose, onAdd, patientId }: Props
   if (!isOpen) return null;
 
   const quickMeds = [
-    { name: "Amlodipine 5mg", times: ["08:00"], instruction: "Uống sau ăn sáng", days: 30 },
-    { name: "Metformin 500mg", times: ["08:00", "12:00"], instruction: "Uống ngay sau ăn", days: 30 },
-    { name: "Panadol Extra", times: ["08:00", "20:00"], instruction: "Uống sau ăn", days: 5 },
-    { name: "Augmentin 1g", times: ["08:00", "20:00"], instruction: "Uống sau ăn 30 phút", days: 7 },
-    { name: "Atorvastatin 10mg", times: ["20:00"], instruction: "Uống buổi tối", days: 30 },
+    { name: "Amlodipine 5mg", times: ["08:00"], instruction: "Uống sau ăn sáng 30 phút", days: 30 },
+    { name: "Paracetamol 500mg", times: ["12:30"], instruction: "Khi đau khớp gối, sau ăn", days: 7 },
+    { name: "Vitamin C 1000mg", times: ["08:30"], instruction: "Hòa tan trong 200ml nước, sau ăn sáng", days: 10 },
+    { name: "Omega-3 1000mg", times: ["12:30"], instruction: "Uống sau ăn trưa", days: 30 },
+    { name: "Metformin 500mg", times: ["08:00", "12:30"], instruction: "Uống ngay sau ăn", days: 30 },
   ];
 
   const handleQuickSelect = (m: any) => {
@@ -72,6 +75,12 @@ export default function AddMedModal({ isOpen, onClose, onAdd, patientId }: Props
     } else {
       setSelectedTimes([...selectedTimes, slot.defaultTime].sort());
     }
+  };
+
+  const updateCustomTime = (index: number, newTime: string) => {
+    const updated = [...selectedTimes];
+    updated[index] = newTime;
+    setSelectedTimes(updated);
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -220,8 +229,8 @@ export default function AddMedModal({ isOpen, onClose, onAdd, patientId }: Props
           </div>
 
           {/* Các cữ uống trong ngày */}
-          <div>
-            <div className="flex justify-between items-center mb-1.5">
+          <div className="space-y-2">
+            <div className="flex justify-between items-center mb-1">
               <label className="text-xs font-bold text-[#1a2b4b] flex items-center gap-1">
                 <Clock size={14} /> Các cữ uống trong ngày *
               </label>
@@ -230,7 +239,7 @@ export default function AddMedModal({ isOpen, onClose, onAdd, patientId }: Props
               </span>
             </div>
             
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {AVAILABLE_SLOTS.map((slot) => {
                 const isSelected = selectedTimes.includes(slot.defaultTime);
                 return (
@@ -239,17 +248,37 @@ export default function AddMedModal({ isOpen, onClose, onAdd, patientId }: Props
                     type="button"
                     onClick={() => toggleSlot(slot)}
                     className={cn(
-                      "py-2.5 px-2 rounded-2xl text-center border-2 transition-all cursor-pointer flex flex-col items-center",
+                      "p-2.5 rounded-2xl text-left border-2 transition-all cursor-pointer flex flex-col justify-between",
                       isSelected 
                         ? "bg-primary text-white border-primary shadow-sm" 
-                        : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
+                        : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
                     )}
                   >
-                    <span className="text-xs font-bold">{slot.label}</span>
-                    <span className="text-[11px] opacity-80 mt-0.5">{slot.defaultTime}</span>
+                    <span className="text-xs font-bold leading-tight">{slot.label}</span>
+                    <span className="text-[10px] opacity-80 mt-1 font-mono">{slot.defaultTime}</span>
                   </button>
                 );
               })}
+            </div>
+
+            {/* Chỉnh sửa giờ chuông báo chính xác cho các cữ đã chọn */}
+            <div className="bg-gray-50 rounded-2xl p-3 border border-gray-200 space-y-2">
+              <span className="text-[11px] font-extrabold text-[#1a2b4b] block">
+                ⏰ Giờ chuông báo cụ thể:
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {selectedTimes.map((time, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5 bg-white border border-gray-300 px-2.5 py-1 rounded-xl shadow-xs">
+                    <Clock size={12} className="text-primary" />
+                    <input 
+                      type="time"
+                      value={time}
+                      onChange={(e) => updateCustomTime(idx, e.target.value)}
+                      className="text-xs font-black text-primary bg-transparent outline-none cursor-pointer"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
