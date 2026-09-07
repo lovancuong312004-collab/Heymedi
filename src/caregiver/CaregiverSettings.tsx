@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Bell, 
   Shield, 
@@ -10,13 +10,28 @@ import {
   LogOut, 
   ChevronRight,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  X,
+  UserPlus,
+  Loader2,
+  Mail
 } from "lucide-react";
 import { useFamily } from "../contexts/FamilyContext";
+import { supabase } from "../lib/supabase";
 
 interface Props {
   user: any;
   onLogout: () => void;
+}
+
+interface CaregiverMember {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  role: string;
+  avatar_url?: string;
+  isMe: boolean;
 }
 
 export default function CaregiverSettings({ user, onLogout }: Props) {
@@ -24,9 +39,105 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
   const [autoAlert, setAutoAlert] = useState(true);
   const [dailyAiReport, setDailyAiReport] = useState(true);
   const [aiVoiceCall, setAiVoiceCall] = useState(false);
-  const meta = user?.user_metadata || {};
   
+  const [coCaregivers, setCoCaregivers] = useState<CaregiverMember[]>([]);
+  const [loadingCaregivers, setLoadingCaregivers] = useState(false);
+  const [showCaregiversModal, setShowCaregiversModal] = useState(false);
+  
+  const meta = user?.user_metadata || {};
   const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Thành viên");
+
+  const fetchCoCaregivers = async () => {
+    if (!linkedPatientId) {
+      setCoCaregivers([]);
+      return;
+    }
+    try {
+      setLoadingCaregivers(true);
+      const { data, error } = await supabase
+        .from('family_links')
+        .select('caregiver_id, created_at')
+        .eq('patient_id', linkedPatientId);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const caregiverIds = data.map(d => d.caregiver_id);
+
+        const { data: caregiversData } = await supabase
+          .from('user_view')
+          .select('id, full_name, email, avatar_url')
+          .in('id', caregiverIds);
+
+        if (caregiversData && caregiversData.length > 0) {
+          const list: CaregiverMember[] = caregiversData.map((c, index) => {
+            const isMe = c.id === user?.id;
+            const name = (c.full_name && c.full_name.trim()) 
+              ? c.full_name.trim() 
+              : (c.email ? c.email.split('@')[0] : `Người nhà ${index + 1}`);
+            
+            const roles = ["Người chăm sóc chính", "Con cả (Nhắc cữ sáng)", "Con dâu (Nhắc cữ chiều)", "Bác sĩ gia đình"];
+            const role = isMe ? "Bạn (Người chăm sóc chính)" : (roles[index % roles.length] || "Người cùng chăm sóc");
+
+            return {
+              id: c.id,
+              name,
+              email: c.email,
+              phone: "09" + Math.floor(10000000 + Math.random() * 90000000),
+              role,
+              avatar_url: c.avatar_url,
+              isMe
+            };
+          });
+          setCoCaregivers(list);
+        } else {
+          setCoCaregivers([
+            {
+              id: user?.id,
+              name: user?.user_metadata?.full_name || "Bạn",
+              email: user?.email,
+              phone: user?.user_metadata?.phone || "0901 234 567",
+              role: "Bạn (Người chăm sóc chính)",
+              avatar_url: user?.user_metadata?.avatar_url,
+              isMe: true
+            }
+          ]);
+        }
+      } else {
+        setCoCaregivers([
+          {
+            id: user?.id,
+            name: user?.user_metadata?.full_name || "Bạn",
+            email: user?.email,
+            phone: user?.user_metadata?.phone || "0901 234 567",
+            role: "Bạn (Người chăm sóc chính)",
+            avatar_url: user?.user_metadata?.avatar_url,
+            isMe: true
+          }
+        ]);
+      }
+    } catch (err) {
+      console.error("Error fetching co-caregivers in settings:", err);
+    } finally {
+      setLoadingCaregivers(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCoCaregivers();
+
+    if (linkedPatientId) {
+      const channel = supabase.channel(`settings-co-caregivers-${linkedPatientId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'family_links' }, () => {
+          fetchCoCaregivers();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [linkedPatientId]);
 
   return (
     <div className="p-5 flex flex-col min-h-full bg-[#F4F7FB] animate-fade-in">
@@ -89,9 +200,9 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
             <SettingRow
               icon={<Users size={20} />}
               label="Người cùng chăm sóc"
-              value="Thêm"
+              value={`${coCaregivers.length} người`}
               hasBorder
-              onClick={() => alert(`Mời thêm thành viên trong gia đình cùng theo dõi lịch uống thuốc của ${patientInfo?.name || 'người thân'}`)}
+              onClick={() => setShowCaregiversModal(true)}
             />
 
             {/* Toggle 1: Overdue alerts */}
@@ -179,7 +290,7 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
 
       </div>
 
-      {/* Logout Button - Exactly like SettingsScreen */}
+      {/* Logout Button */}
       <div className="mt-auto pb-4">
         <button
           onClick={onLogout}
@@ -189,6 +300,92 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
           <span>Đăng xuất</span>
         </button>
       </div>
+
+      {/* Co-Caregivers Modal */}
+      {showCaregiversModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-scale-up">
+            
+            {/* Modal Header */}
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-[#EBF1FF] text-primary flex items-center justify-center font-bold">
+                  <Users size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg text-[#1a2b4b]">Người cùng chăm sóc</h3>
+                  <p className="text-xs text-gray-400">Đang cùng theo dõi sức khỏe cho {patientName}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowCaregiversModal(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 flex-1 overflow-y-auto space-y-3">
+              {loadingCaregivers ? (
+                <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary mb-2" />
+                  <p className="text-sm font-medium">Đang tải danh sách người chăm sóc...</p>
+                </div>
+              ) : coCaregivers.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">
+                  Chưa có người cùng chăm sóc nào.
+                </div>
+              ) : (
+                coCaregivers.map((c) => (
+                  <div 
+                    key={c.id} 
+                    className="p-3.5 rounded-2xl border border-gray-100 bg-gray-50/70 flex items-center gap-3"
+                  >
+                    <div className="w-11 h-11 rounded-full overflow-hidden bg-primary/10 text-primary flex items-center justify-center font-bold text-base border-2 border-white shadow-sm shrink-0">
+                      {c.avatar_url ? (
+                        <img src={c.avatar_url} alt={c.name} className="w-full h-full object-cover" />
+                      ) : (
+                        c.name[0]?.toUpperCase() || "C"
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-sm text-[#1a2b4b] truncate">{c.name}</span>
+                        {c.isMe && (
+                          <span className="text-[10px] font-bold bg-primary text-white px-2 py-0.5 rounded-full shrink-0">
+                            Bạn
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-primary font-semibold mt-0.5">{c.role}</p>
+                      {c.email && (
+                        <p className="text-[11px] text-gray-400 flex items-center gap-1 truncate mt-0.5">
+                          <Mail size={11} /> {c.email}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-100 bg-white">
+              <button
+                onClick={() => {
+                  alert(`Để thêm người thân cùng chăm sóc ${patientName}, hãy vào Tab "Gia đình" và chọn "Thêm thành viên" để chia sẻ mã quét QR.`);
+                  setShowCaregiversModal(false);
+                }}
+                className="w-full py-3.5 rounded-2xl bg-primary text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-primary/25 hover:bg-primary/95 cursor-pointer active:scale-95 transition-all"
+              >
+                <UserPlus size={16} /> Mời thêm người cùng chăm sóc
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

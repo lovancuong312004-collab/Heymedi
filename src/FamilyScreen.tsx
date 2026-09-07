@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Plus, ChevronRight, Heart, CheckCircle2, UserPlus, Loader2, Phone, AlertCircle } from "lucide-react";
+import { Plus, ChevronRight, Heart, UserPlus, Loader2, Phone, AlertCircle, CheckCircle2 } from "lucide-react";
 import HealthProfileModal from "./screens/HealthProfileModal";
 import GenerateLinkModal from "./screens/GenerateLinkModal";
+import SOSModal from "./screens/SOSModal";
 import CallModal from "./caregiver/CallModal";
 import { supabase } from "./lib/supabase";
 
@@ -12,6 +13,7 @@ interface Props {
 export default function FamilyScreen({ user }: Props) {
   const [isHealthProfileOpen, setIsHealthProfileOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [familyMembers, setFamilyMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [callingContact, setCallingContact] = useState<{
@@ -132,13 +134,7 @@ export default function FamilyScreen({ user }: Props) {
 
       {/* Nút Gọi Khẩn Cấp (SOS) Siêu Nổi Bật cho Người Cao Tuổi */}
       <div 
-        onClick={() => setCallingContact({
-          name: familyMembers[0]?.name || "Con cả (Người chăm sóc chính)",
-          role: "Đường dây ưu tiên SOS",
-          phone: "0901 234 567",
-          avatarUrl: familyMembers[0]?.avatar_url,
-          isSOS: true
-        })}
+        onClick={() => setIsSOSOpen(true)}
         className="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-500 text-white rounded-3xl p-4 shadow-lg shadow-red-500/25 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all mb-4 border border-red-400/40 select-none"
       >
         <div className="flex items-center gap-3.5">
@@ -245,6 +241,15 @@ export default function FamilyScreen({ user }: Props) {
           <PermissionItem text="Xem báo cáo sức khỏe" />
         </div>
       </div>
+
+      {/* SOS Modal Emergency Countdown & Broadcast */}
+      <SOSModal
+        isOpen={isSOSOpen}
+        onClose={() => setIsSOSOpen(false)}
+        patientId={user?.id}
+        patientName={user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Người bệnh"}
+        contactName="Người thân chăm sóc"
+      />
 
       {/* Modal Gọi điện mô phỏng Hackathon */}
       {callingContact && (

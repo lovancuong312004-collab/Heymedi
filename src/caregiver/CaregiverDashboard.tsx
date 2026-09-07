@@ -132,8 +132,12 @@ export default function CaregiverDashboard({
       {/* 1. Header (User Profile & Switcher) */}
       <div className="flex items-center justify-between mt-2">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full overflow-hidden bg-emerald-100 border-2 border-white shadow-sm shrink-0">
-            <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&h=150&fit=crop&crop=face" alt="Avatar" className="w-full h-full object-cover" />
+          <div className="w-10 h-10 rounded-full overflow-hidden bg-emerald-100 border-2 border-white shadow-sm shrink-0 flex items-center justify-center font-bold text-emerald-800 text-sm">
+            {user?.user_metadata?.avatar_url ? (
+              <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              (caregiverName || "C")[0].toUpperCase()
+            )}
           </div>
           <div>
             <p className="text-gray-500 text-[11px] font-bold uppercase tracking-wider">Người chăm sóc,</p>

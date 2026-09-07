@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Home, 
   Pill, 
@@ -16,9 +16,11 @@ import AIReportScreen from "./caregiver/AIReportScreen";
 import CaregiverSettings from "./caregiver/CaregiverSettings";
 import CaregiverFamilyScreen from "./caregiver/CaregiverFamilyScreen";
 import CallModal from "./caregiver/CallModal";
+import CaregiverSOSAlertModal, { type SOSAlertPayload } from "./caregiver/CaregiverSOSAlertModal";
 import ScanPrescriptionModal from "./caregiver/ScanPrescriptionModal";
 import AddMedModal from "./caregiver/AddMedModal";
 import { FamilyProvider, useFamily } from "./contexts/FamilyContext";
+import { supabase } from "./lib/supabase";
 
 interface Props {
   user: any;
@@ -36,7 +38,7 @@ export default function CaregiverApp({ user, onLogout }: Props) {
 }
 
 function CaregiverAppContent({ user, onLogout }: Props) {
-  const { patientInfo } = useFamily();
+  const { linkedPatientId, patientInfo } = useFamily();
   const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Thành viên");
   const patientPhone = patientInfo?.phone || "0901 234 567";
 
@@ -44,10 +46,41 @@ function CaregiverAppContent({ user, onLogout }: Props) {
   const [isCallOpen, setIsCallOpen] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [isAddMedOpen, setIsAddMedOpen] = useState(false);
+  const [sosAlert, setSosAlert] = useState<SOSAlertPayload | null>(null);
+
+  // Global Emergency SOS Listener
+  useEffect(() => {
+    const channel = supabase.channel('sos-alerts-listener')
+      .on('broadcast', { event: 'EMERGENCY' }, (event) => {
+        console.log("Global Caregiver received SOS Broadcast:", event);
+        const payload = event.payload as SOSAlertPayload;
+        if (payload) {
+          // If we have a linked patient, check ID; if not linked yet, also show alert for demo
+          if (!linkedPatientId || payload.patient_id === linkedPatientId) {
+            setSosAlert(payload);
+          }
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [linkedPatientId]);
 
   return (
     <div className="w-full flex flex-col min-h-screen relative bg-[#F4F7FB] font-sans">
       
+      {/* Fullscreen Siren SOS Alert Modal */}
+      <CaregiverSOSAlertModal
+        alertData={sosAlert}
+        onDismiss={() => setSosAlert(null)}
+        onOpenCall={() => {
+          setSosAlert(null);
+          setIsCallOpen(true);
+        }}
+      />
+
       {/* Modals */}
       <CallModal
         isOpen={isCallOpen}

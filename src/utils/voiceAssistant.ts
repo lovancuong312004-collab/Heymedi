@@ -61,3 +61,65 @@ export const unlockAudio = () => {
   playAlarmTone();
   speakVietnamese("Hệ thống nhắc nhở đã được kích hoạt.");
 };
+
+export const silentAudioUnlock = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    const buffer = audioCtx.createBuffer(1, 1, 22050);
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioCtx.destination);
+    source.start(0);
+
+    if ('speechSynthesis' in window && window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+    console.log("Silent AudioContext unlocked successfully");
+  } catch (e) {
+    console.warn("Silent audio unlock failed:", e);
+  }
+};
+
+/**
+ * Còi hú cấp cứu SOS cho Caregiver
+ * Trả về hàm stop() để dừng còi hú
+ */
+export const startSirenAlarm = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.type = 'sawtooth';
+    gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
+
+    const now = audioCtx.currentTime;
+    // Modulate siren between 600Hz and 1200Hz for 60 seconds
+    for (let i = 0; i < 75; i++) {
+      oscillator.frequency.setValueAtTime(600, now + i * 0.8);
+      oscillator.frequency.exponentialRampToValueAtTime(1200, now + i * 0.8 + 0.4);
+      oscillator.frequency.exponentialRampToValueAtTime(600, now + i * 0.8 + 0.8);
+    }
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.start();
+
+    return () => {
+      try {
+        oscillator.stop();
+        oscillator.disconnect();
+        gainNode.disconnect();
+      } catch (err) {}
+    };
+  } catch (e) {
+    console.error("Failed to start siren alarm:", e);
+    return () => {};
+  }
+};

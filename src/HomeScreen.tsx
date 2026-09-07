@@ -114,6 +114,8 @@ export default function HomeScreen({ user, onLogout: _onLogout, isAudioUnlocked 
         isOpen={isSOSOpen} 
         onClose={() => setIsSOSOpen(false)} 
         contactName="Người thân" 
+        patientId={patientId}
+        patientName={userName}
       />
 
       {alertMed && (
