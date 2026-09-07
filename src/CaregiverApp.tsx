@@ -18,10 +18,12 @@ import CaregiverFamilyScreen from "./caregiver/CaregiverFamilyScreen";
 import CallModal from "./caregiver/CallModal";
 import IncomingCallModal from "./components/IncomingCallModal";
 import CaregiverSOSAlertModal, { type SOSAlertPayload } from "./caregiver/CaregiverSOSAlertModal";
+import PillProofReceivedModal, { type PillProofPayload } from "./components/PillProofReceivedModal";
 import ScanPrescriptionModal from "./caregiver/ScanPrescriptionModal";
 import AddMedModal from "./caregiver/AddMedModal";
 import { FamilyProvider, useFamily } from "./contexts/FamilyContext";
 import { recordMissedCall, getUnreadMissedCallCount } from "./services/missedCallService";
+import { savePillProof } from "./services/medicationService";
 import { supabase } from "./lib/supabase";
 
 interface Props {
@@ -48,6 +50,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [isAddMedOpen, setIsAddMedOpen] = useState(false);
   const [sosAlert, setSosAlert] = useState<SOSAlertPayload | null>(null);
+  const [pillProofAlert, setPillProofAlert] = useState<PillProofPayload | null>(null);
   const [unreadMissedCount, setUnreadMissedCount] = useState<number>(getUnreadMissedCallCount());
 
   useEffect(() => {
@@ -200,8 +203,21 @@ function CaregiverAppContent({ user, onLogout }: Props) {
       .on('broadcast', { event: 'PILL_TAKEN_PROOF' }, (event) => {
         console.log("Caregiver received PILL_TAKEN_PROOF:", event);
         const p = event.payload;
-        if (p && (!linkedPatientId || p.patient_id === linkedPatientId)) {
-          alert(`📸 XÁC NHẬN TỪ NGƯỜI BỆNH:\n${p.patient_name || patientName} đã uống thuốc và gửi ảnh chụp đối chiếu vỉ thuốc thành công!`);
+        if (p && (!linkedPatientId || !p.patient_id || p.patient_id === linkedPatientId)) {
+          if (p.reminder_id && p.photo_url) {
+            savePillProof(p.reminder_id, p.photo_url);
+          }
+          setPillProofAlert({
+            patient_id: p.patient_id,
+            patient_name: p.patient_name || patientName,
+            reminder_id: p.reminder_id,
+            med_name: p.med_name || "Thuốc",
+            dosage: p.dosage,
+            photo_url: p.photo_url,
+            scheduled_time: p.scheduled_time,
+            taken_at: p.taken_at || p.timestamp,
+            timestamp: p.timestamp || new Date().toISOString()
+          });
         }
       })
       .subscribe();
@@ -223,6 +239,16 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         onOpenCall={() => {
           setSosAlert(null);
           handleStartCall({ isSOS: true });
+        }}
+      />
+
+      {/* Modal Hiển thị minh chứng uống thuốc người già gửi sang */}
+      <PillProofReceivedModal
+        alertData={pillProofAlert}
+        onClose={() => setPillProofAlert(null)}
+        onOpenCall={() => {
+          setPillProofAlert(null);
+          handleStartCall();
         }}
       />
 

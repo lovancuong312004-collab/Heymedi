@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   HeartPulse,
   ShieldCheck,
+  Camera,
   X
 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
@@ -27,6 +28,7 @@ import {
   getActiveMedications,
   getDiagnosisRecords,
   deleteDiagnosisRecord,
+  getMedicationTimingOffset,
   type Reminder,
   type ActiveMedicationItem,
   type DiagnosisRecord
@@ -70,6 +72,14 @@ export default function CaregiverMedsScreen({
     medicationId?: string;
     medName: string;
     timeStr: string;
+  } | null>(null);
+
+  // Modal xem ảnh minh chứng vỉ thuốc đã uống
+  const [viewingPhotoUrl, setViewingPhotoUrl] = useState<{
+    url: string;
+    medName: string;
+    timeStr: string;
+    timingLabel?: string;
   } | null>(null);
 
   // Dải ngày chọn nhanh (Từ 3 ngày trước đến 10 ngày tới)
@@ -473,6 +483,10 @@ export default function CaregiverMedsScreen({
               const isDone = med.status === 'taken';
               const d = new Date(med.scheduled_time);
               const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+              const timingOffset = isDone && med.taken_at 
+                ? getMedicationTimingOffset(med.scheduled_time, med.taken_at)
+                : null;
+              const proofUrl = (med as any).proof_image_url;
 
               return (
                 <div 
@@ -501,6 +515,44 @@ export default function CaregiverMedsScreen({
                         <span className="text-xs text-gray-500 font-medium line-clamp-1 mt-0.5">
                           {med.medication.instructions}
                         </span>
+                      )}
+
+                      {/* Độ lệch giờ uống thực tế */}
+                      {isDone && timingOffset && (
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                          <span className={cn(
+                            "text-[10px] font-black px-2 py-0.5 rounded-full border",
+                            timingOffset.badgeColor === "emerald"
+                              ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                              : timingOffset.badgeColor === "rose"
+                              ? "bg-rose-100 text-rose-800 border-rose-300 animate-pulse font-black"
+                              : "bg-amber-100 text-amber-800 border-amber-300 font-bold"
+                          )}>
+                            {timingOffset.label}
+                          </span>
+                          <span className="text-[10px] text-gray-500 font-medium">
+                            (Uống lúc: {new Date(med.taken_at!).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Nút xem ảnh minh chứng vỉ thuốc */}
+                      {proofUrl && (
+                        <div className="mt-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setViewingPhotoUrl({
+                              url: proofUrl,
+                              medName: med.medication?.name || "Thuốc",
+                              timeStr,
+                              timingLabel: timingOffset?.label
+                            })}
+                            className="inline-flex items-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-xl text-[11px] font-bold active:scale-95 transition-all cursor-pointer shadow-2xs"
+                          >
+                            <Camera size={13} />
+                            <span>📸 Xem ảnh vỉ thuốc</span>
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -790,6 +842,50 @@ export default function CaregiverMedsScreen({
             >
               Hủy bỏ
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP MODAL XEM ẢNH MINH CHỨNG VỈ THUỐC */}
+      {viewingPhotoUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-gray-100 flex flex-col max-h-[90vh]">
+            <div className="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Camera size={18} className="text-primary" />
+                <div>
+                  <h4 className="font-black text-sm text-[#1a2b4b]">
+                    Ảnh minh chứng: {viewingPhotoUrl.medName}
+                  </h4>
+                  <p className="text-[11px] text-gray-500">
+                    Cữ {viewingPhotoUrl.timeStr} {viewingPhotoUrl.timingLabel ? `• ${viewingPhotoUrl.timingLabel}` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingPhotoUrl(null)}
+                className="w-8 h-8 rounded-full bg-gray-200/80 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 bg-gray-900 flex items-center justify-center min-h-[300px] max-h-[550px] overflow-hidden">
+              <img 
+                src={viewingPhotoUrl.url} 
+                alt="Minh chứng vỉ thuốc" 
+                className="w-full h-full object-contain rounded-xl"
+              />
+            </div>
+
+            <div className="p-3.5 bg-white border-t border-gray-100 flex justify-end">
+              <button
+                onClick={() => setViewingPhotoUrl(null)}
+                className="w-full py-2.5 rounded-xl bg-primary text-white font-bold text-xs shadow-md shadow-primary/20 cursor-pointer"
+              >
+                Đóng ảnh
+              </button>
+            </div>
           </div>
         </div>
       )}

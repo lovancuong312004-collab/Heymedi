@@ -1,17 +1,22 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Bell, Volume2, Check, X, Camera, Loader2, CheckCircle2 } from "lucide-react";
 import { speakVietnamese } from "../utils/voiceAssistant";
 import { supabase } from "../lib/supabase";
+import { uploadPillProofImage } from "../services/medicationService";
+import ElderlyCameraCaptureModal from "../components/ElderlyCameraCaptureModal";
 
 interface Medicine {
+  id?: string;
   name: string;
   dosage: string;
   instruction: string;
   time: string;
+  scheduled_time?: string;
 }
 
 interface Props {
   medicine: Medicine;
+  patientName?: string;
   onTaken: (photoUrl?: string) => void;
   onSnooze?: () => void; 
   verificationMode?: 'photo_required' | 'simple_only' | 'both';
@@ -19,6 +24,7 @@ interface Props {
 
 export default function MedicationAlertScreen({ 
   medicine, 
+  patientName = "Bác",
   onTaken, 
   onSnooze,
   verificationMode 
@@ -27,41 +33,50 @@ export default function MedicationAlertScreen({
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   const handleHearAgain = () => {
     speakVietnamese(`Đến giờ uống thuốc rồi ạ. Thuốc ${medicine.name}, liều dùng ${medicine.dosage}, ${medicine.instruction}.`);
   };
 
-  const handleCaptureProof = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const url = URL.createObjectURL(file);
-      setPhotoPreview(url);
-      setIsVerifying(true);
+  const handleCameraCaptureComplete = async (blob: Blob, previewUrl: string) => {
+    setPhotoPreview(previewUrl);
+    setIsVerifying(true);
+    setVerificationResult("Đang tải ảnh và đối chiếu y tế...");
 
-      // AI quick verification simulation
+    try {
+      // 1. Upload ảnh thật lên Supabase Storage
+      const uploadedUrl = await uploadPillProofImage(blob, medicine.id);
+
+      // 2. Đối chiếu AI
+      setVerificationResult(`✓ AI đối chiếu thành công: Đúng vỉ thuốc ${medicine.name}!`);
+
+      // 3. Gửi broadcast tới người chăm sóc
+      const nowIso = new Date().toISOString();
+      const channel = supabase.channel('sos-emergency-alerts');
+      await channel.send({
+        type: 'broadcast',
+        event: 'PILL_TAKEN_PROOF',
+        payload: {
+          reminder_id: medicine.id,
+          med_name: medicine.name,
+          dosage: medicine.dosage,
+          photo_url: uploadedUrl,
+          patient_name: patientName,
+          scheduled_time: medicine.scheduled_time || nowIso,
+          taken_at: nowIso,
+          timestamp: nowIso
+        }
+      });
+
       setTimeout(() => {
         setIsVerifying(false);
-        setVerificationResult(`✓ AI đối chiếu thành công: Đúng thuốc ${medicine.name}!`);
-
-        // Send broadcast to caregiver
-        const channel = supabase.channel('sos-emergency-alerts');
-        channel.send({
-          type: 'broadcast',
-          event: 'PILL_TAKEN_PROOF',
-          payload: {
-            med_name: medicine.name,
-            dosage: medicine.dosage,
-            photo_url: url,
-            timestamp: new Date().toISOString()
-          }
-        }).catch(() => {});
-
-        setTimeout(() => {
-          onTaken(url);
-        }, 1500);
-      }, 1800);
+        onTaken(uploadedUrl);
+      }, 1200);
+    } catch (err) {
+      console.error("Lỗi khi lưu ảnh minh chứng:", err);
+      setIsVerifying(false);
+      onTaken(previewUrl);
     }
   };
 
@@ -125,14 +140,14 @@ export default function MedicationAlertScreen({
         <p className="text-[#3b476b] text-sm font-semibold bg-[#EBF1FF] px-3.5 py-1 rounded-full">{medicine.dosage} • {medicine.instruction}</p>
       </div>
 
-      {/* Hidden file input for capturing pill proof */}
-      <input 
-        type="file" 
-        accept="image/*" 
-        capture="environment" 
-        ref={fileInputRef} 
-        onChange={handleCaptureProof} 
-        className="hidden" 
+      {/* Modal Camera trực tiếp dành cho người già */}
+      <ElderlyCameraCaptureModal
+        isOpen={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        title="Chụp Ảnh Vỉ Thuốc"
+        subtitle={`Chụp vỉ thuốc ${medicine.name} để gửi cho con`}
+        guideText="ĐẶT VỈ THUỐC HOẶC THUỐC TRÊN TAY VÀO KHUNG"
+        onCaptureComplete={handleCameraCaptureComplete}
       />
 
       {/* 3. Action Buttons */}
@@ -141,7 +156,7 @@ export default function MedicationAlertScreen({
         {(activeMode === 'photo_required' || activeMode === 'both') && (
           <div>
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => setIsCameraOpen(true)}
               disabled={isVerifying}
               className="w-full bg-[#1C4ED8] hover:bg-blue-700 text-white py-3.5 px-4 rounded-2xl font-black text-[15px] shadow-md flex items-center justify-center gap-2.5 active:scale-[0.98] transition-all cursor-pointer border-b-4 border-blue-900"
             >

@@ -16,8 +16,10 @@ import {
   Stethoscope, 
   AlertTriangle,
   Lock,
-  HeartPulse
+  HeartPulse,
+  UploadCloud
 } from "lucide-react";
+import ElderlyCameraCaptureModal from "../components/ElderlyCameraCaptureModal";
 import { 
   analyzePrescription, 
   type ParsedMedication
@@ -39,6 +41,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Trạng thái quét & hiệu ứng công nghệ cao
@@ -116,39 +119,50 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
 
   if (!isOpen) return null;
 
+  const processImageFile = async (file: File, previewUrl: string) => {
+    setImageFile(file);
+    setImagePreview(previewUrl);
+    setStep("scanning");
+
+    try {
+      const [result] = await Promise.all([
+        analyzePrescription(file),
+        new Promise((resolve) => setTimeout(resolve, 2800))
+      ]);
+
+      setScanProgress(100);
+      setScanStageText("✅ Hoàn tất trích xuất dữ liệu lâm sàng!");
+
+      setTimeout(() => {
+        setPrescriptionMeta({
+          hospitalName: result.hospitalName,
+          patientName: result.patientName,
+          diagnosis: result.diagnosis,
+          doctorName: result.doctorName,
+          revisitDays: result.revisitDays
+        });
+        setMedsList(result.medications);
+        setStep("review");
+      }, 400);
+
+    } catch (err: any) {
+      alert(err.message || "Có lỗi xảy ra khi quét đơn thuốc. Vui lòng thử lại!");
+      resetState();
+    }
+  };
+
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
-      setStep("scanning");
-
-      try {
-        const [result] = await Promise.all([
-          analyzePrescription(file),
-          new Promise((resolve) => setTimeout(resolve, 2800))
-        ]);
-
-        setScanProgress(100);
-        setScanStageText("✅ Hoàn tất trích xuất dữ liệu lâm sàng!");
-
-        setTimeout(() => {
-          setPrescriptionMeta({
-            hospitalName: result.hospitalName,
-            patientName: result.patientName,
-            diagnosis: result.diagnosis,
-            doctorName: result.doctorName,
-            revisitDays: result.revisitDays
-          });
-          setMedsList(result.medications);
-          setStep("review");
-        }, 400);
-
-      } catch (err: any) {
-        alert(err.message || "Có lỗi xảy ra khi quét đơn thuốc. Vui lòng thử lại!");
-        resetState();
-      }
+      const preview = URL.createObjectURL(file);
+      await processImageFile(file, preview);
     }
+  };
+
+  const handleCameraCapture = async (blob: Blob, previewUrl: string) => {
+    setIsCameraOpen(false);
+    const file = new File([blob], `prescription_${Date.now()}.jpg`, { type: blob.type || "image/jpeg" });
+    await processImageFile(file, previewUrl);
   };
 
   const resetState = () => {
@@ -159,6 +173,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
     setScanProgress(0);
     setShowOriginalPhoto(false);
     setIsMismatchConfirmed(false);
+    setIsCameraOpen(false);
     setStep("capture");
   };
 
@@ -324,28 +339,66 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
           
           {/* 1. MÀN HÌNH CHỌN / CHỤP ẢNH */}
           {step === "capture" && (
-            <div className="flex flex-col items-center justify-center py-4 space-y-4">
+            <div className="flex flex-col items-center justify-center py-2 space-y-4">
+              {/* Input file thuần túy (không ép capture để không gây lỗi bật file manager khi muốn chụp) */}
               <input 
                 type="file" 
                 accept="image/*" 
-                capture="environment" 
                 className="hidden" 
                 ref={fileInputRef} 
                 onChange={handleImageChange} 
               />
 
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-blue-50/80 to-indigo-50/80 text-primary border-2 border-dashed border-[#B3CCFF] rounded-[28px] p-8 sm:p-10 hover:bg-blue-100/50 transition-all cursor-pointer shadow-sm hover:shadow"
-              >
-                <div className="w-20 h-20 bg-white rounded-full shadow-md flex items-center justify-center text-primary">
-                  <Camera size={38} />
-                </div>
-                <div className="text-center">
-                  <span className="font-extrabold text-xl block text-[#1A2B4B]">Chụp Hoặc Tải Ảnh Đơn Thuốc</span>
-                  <span className="text-xs sm:text-sm text-gray-500 mt-1 block font-medium">Hệ thống AI sẽ quét & hiển thị trực tiếp ảnh đơn thuốc</span>
-                </div>
-              </button>
+              {/* Phân tách 2 lựa chọn cực kỳ rõ ràng: CHỤP CAMERA vs TẢI FILE CÓ SẴN */}
+              <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Lựa chọn 1: Mở Camera chụp trực tiếp */}
+                <button 
+                  type="button"
+                  onClick={() => setIsCameraOpen(true)}
+                  className="flex flex-col items-center justify-center text-center gap-3 bg-gradient-to-b from-blue-600 to-primary text-white rounded-3xl p-6 sm:p-7 hover:shadow-xl hover:shadow-primary/30 transition-all cursor-pointer group active:scale-[0.98] border border-blue-400/30 shadow-md"
+                >
+                  <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white shadow-inner group-hover:scale-110 transition-transform">
+                    <Camera size={34} />
+                  </div>
+                  <div>
+                    <span className="font-black text-lg block tracking-wide text-white">📸 Chụp Bằng Camera</span>
+                    <span className="text-xs text-blue-100 mt-1 block font-medium">Bật máy ảnh trực tiếp để chụp đơn thuốc</span>
+                  </div>
+                  <span className="text-[11px] font-extrabold bg-white/25 text-white px-3 py-1 rounded-full mt-1 border border-white/30">
+                    Máy ảnh trực tiếp (Live)
+                  </span>
+                </button>
+
+                {/* Lựa chọn 2: Tải ảnh có sẵn từ máy */}
+                <button 
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex flex-col items-center justify-center text-center gap-3 bg-white text-gray-800 border-2 border-dashed border-gray-300 rounded-3xl p-6 sm:p-7 hover:border-primary hover:bg-blue-50/40 hover:text-primary transition-all cursor-pointer group active:scale-[0.98] shadow-sm hover:shadow-md"
+                >
+                  <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-600 group-hover:text-primary group-hover:bg-blue-100 transition-colors">
+                    <UploadCloud size={34} />
+                  </div>
+                  <div>
+                    <span className="font-black text-lg block tracking-wide text-[#1A2B4B] group-hover:text-primary">📁 Tải Ảnh Từ Thiết Bị</span>
+                    <span className="text-xs text-gray-500 mt-1 block font-medium">Chọn từ thư viện ảnh hoặc tệp đã lưu</span>
+                  </div>
+                  <span className="text-[11px] font-extrabold bg-gray-100 text-gray-600 px-3 py-1 rounded-full mt-1 group-hover:bg-blue-50 group-hover:text-primary border border-gray-200">
+                    Bộ sưu tập / Thư viện tệp
+                  </span>
+                </button>
+              </div>
+
+              {/* Modal Camera Live Viewfinder với khung ngắm to rõ */}
+              {isCameraOpen && (
+                <ElderlyCameraCaptureModal
+                  isOpen={isCameraOpen}
+                  onClose={() => setIsCameraOpen(false)}
+                  title="Chụp Ảnh Đơn Thuốc"
+                  subtitle="Căn chỉnh đơn thuốc vuông vắn trong khung hình"
+                  guideText="ĐẶT ĐƠN THUỐC VUÔNG VẮN VÀO KHUNG ĐỂ AI NHẬN DIỆN CHÍNH XÁC"
+                  onCaptureComplete={handleCameraCapture}
+                />
+              )}
 
               <div className="w-full bg-blue-50/60 border border-blue-200/80 rounded-2xl p-4 text-xs text-blue-950 space-y-2">
                 <div className="font-extrabold flex items-center gap-2 text-primary text-sm">

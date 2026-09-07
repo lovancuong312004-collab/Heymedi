@@ -9,11 +9,15 @@ import {
   Trash2, 
   Plus, 
   Loader2,
-  Send
+  Send,
+  Camera,
+  UploadCloud
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { supabase } from "../lib/supabase";
 import type { Reminder } from "../services/medicationService";
+import { uploadPillProofImage } from "../services/medicationService";
+import ElderlyCameraCaptureModal from "../components/ElderlyCameraCaptureModal";
 
 interface Props {
   isOpen: boolean;
@@ -47,17 +51,42 @@ export default function ScanUnknownMedModal({
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [isNotifyingCaregiver, setIsNotifyingCaregiver] = useState(false);
   const [notifiedDone, setNotifiedDone] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
-  const handleCapturePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCaptureFromCamera = async (blob: Blob, previewUrl: string) => {
+    setIsCameraOpen(false);
+    if (photos.length >= 3) return;
+
+    setIsUploadingPhoto(true);
+    try {
+      const publicUrl = await uploadPillProofImage(blob);
+      setPhotos(prev => [...prev, publicUrl || previewUrl]);
+    } catch {
+      setPhotos(prev => [...prev, previewUrl]);
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const url = URL.createObjectURL(file);
-      if (photos.length < 3) {
+      if (photos.length >= 3) return;
+
+      setIsUploadingPhoto(true);
+      try {
+        const publicUrl = await uploadPillProofImage(file);
+        setPhotos(prev => [...prev, publicUrl]);
+      } catch {
+        const url = URL.createObjectURL(file);
         setPhotos(prev => [...prev, url]);
+      } finally {
+        setIsUploadingPhoto(false);
       }
     }
   };
@@ -221,11 +250,11 @@ export default function ScanUnknownMedModal({
                     </>
                   ) : (
                     <button
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => setIsCameraOpen(true)}
                       className="w-full h-full flex flex-col items-center justify-center gap-1 text-gray-400 hover:text-primary transition-colors cursor-pointer"
                     >
                       <Plus size={22} />
-                      <span className="text-[10px] font-bold">Ảnh {idx + 1}</span>
+                      <span className="text-[10px] font-bold">Thêm ảnh {idx + 1}</span>
                     </button>
                   )}
                 </div>
@@ -233,14 +262,56 @@ export default function ScanUnknownMedModal({
             })}
           </div>
 
+          {/* 2 nút thao tác rõ ràng: Mở Camera trực tiếp vs Chọn ảnh từ máy */}
+          <div className="grid grid-cols-2 gap-2.5 pt-1">
+            <button
+              type="button"
+              onClick={() => setIsCameraOpen(true)}
+              disabled={photos.length >= 3 || isUploadingPhoto}
+              className="py-3 px-2 bg-blue-50 hover:bg-blue-100/80 border border-blue-200 rounded-2xl flex items-center justify-center gap-2 text-primary font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Camera size={16} />
+              <span>Chụp bằng Camera</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={photos.length >= 3 || isUploadingPhoto}
+              className="py-3 px-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-2xl flex items-center justify-center gap-2 text-gray-700 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <UploadCloud size={16} />
+              <span>Chọn ảnh từ máy</span>
+            </button>
+          </div>
+
+          {isUploadingPhoto && (
+            <div className="flex items-center justify-center gap-2 text-xs text-blue-600 font-bold py-1 bg-blue-50/60 rounded-xl">
+              <Loader2 size={14} className="animate-spin" />
+              <span>Đang tải và xử lý hình ảnh...</span>
+            </div>
+          )}
+
+          {/* Input file thuần túy để chọn ảnh từ máy */}
           <input 
             type="file" 
             accept="image/*" 
-            capture="environment" 
             ref={fileInputRef} 
-            onChange={handleCapturePhoto} 
+            onChange={handleFileSelect} 
             className="hidden" 
           />
+
+          {/* Modal Camera Live Viewfinder dành cho người cao tuổi */}
+          {isCameraOpen && (
+            <ElderlyCameraCaptureModal
+              isOpen={isCameraOpen}
+              onClose={() => setIsCameraOpen(false)}
+              title="Chụp Ảnh Viên Hoặc Vỉ Thuốc"
+              subtitle="Căn chỉnh viên thuốc hoặc vỉ thuốc rõ nét dưới ánh sáng"
+              guideText="ĐẶT VIÊN THUỐC HOẶC HỘP THUỐC VÀO GIỮA KHUNG HÌNH"
+              onCaptureComplete={handleCaptureFromCamera}
+            />
+          )}
 
           {/* Action to scan */}
           {!result && (

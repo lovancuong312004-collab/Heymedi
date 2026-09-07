@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { Calendar, Phone, Plus, Scan, CheckCircle2, Clock, AlertCircle, ChevronRight, Sparkles, Loader2, Hand } from "lucide-react";
+import { Calendar, Phone, Plus, Scan, CheckCircle2, Clock, AlertCircle, ChevronRight, Sparkles, Loader2, Hand, Camera, X } from "lucide-react";
 import { Lunar } from "lunar-javascript";
-import { getTodaySchedule, getOverdueReminders, markAsTaken, type Reminder } from "../services/medicationService";
+import { getTodaySchedule, getOverdueReminders, markAsTaken, getMedicationTimingOffset, getPillProof, type Reminder } from "../services/medicationService";
 import { useFamily } from "../contexts/FamilyContext";
 import { supabase } from "../lib/supabase";
+import { cn } from "../lib/utils";
 
 interface Props {
   user: any;
@@ -30,6 +31,7 @@ export default function CaregiverDashboard({
   const [overdue, setOverdue] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [dashboardProofPhoto, setDashboardProofPhoto] = useState<{ url: string; medName: string } | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentDate(new Date()), 1000);
@@ -297,6 +299,11 @@ export default function CaregiverDashboard({
             const now = new Date();
             const isOverdue = item.status === "missed" || (item.status === "pending" && (now.getTime() - scheduledTime.getTime() > 15 * 60000));
 
+            const timingOffset = isDone && item.taken_at 
+              ? getMedicationTimingOffset(item.scheduled_time, item.taken_at)
+              : null;
+            const proofUrl = (item as any).proof_image_url || getPillProof(item.id);
+
             return (
               <div key={item.id} className="flex items-center justify-between p-2 rounded-2xl hover:bg-gray-50/80 transition-colors">
                 <div className="flex items-center gap-3">
@@ -335,9 +342,35 @@ export default function CaregiverDashboard({
                       Gọi nhắc
                     </button>
                   ) : isDone ? (
-                    <span className="text-xs font-bold text-success bg-green-50 border border-green-100 px-2.5 py-1 rounded-lg">
-                      Đã uống {item.taken_at ? `(${new Date(item.taken_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})` : ''}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {timingOffset ? (
+                        <span className={cn(
+                          "text-xs font-black px-2.5 py-1 rounded-lg border",
+                          timingOffset.badgeColor === "emerald"
+                            ? "text-success bg-green-50 border-green-200"
+                            : timingOffset.badgeColor === "rose"
+                            ? "text-danger bg-red-50 border-red-200 animate-pulse font-black"
+                            : "text-amber-800 bg-amber-50 border-amber-200 font-bold"
+                        )}>
+                          {timingOffset.label}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-bold text-success bg-green-50 border border-green-100 px-2.5 py-1 rounded-lg">
+                          Đã uống
+                        </span>
+                      )}
+
+                      {proofUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setDashboardProofPhoto({ url: proofUrl, medName: item.medication?.name || "Thuốc" })}
+                          className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-primary border border-blue-200 active:scale-95 transition-all cursor-pointer"
+                          title="Xem ảnh chụp vỉ thuốc minh chứng"
+                        >
+                          <Camera size={14} />
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <button
                       onClick={() => handleMarkDone(item.id)}
@@ -371,6 +404,45 @@ export default function CaregiverDashboard({
         </div>
         <ChevronRight size={18} className="text-gray-400" />
       </div>
+
+      {/* Modal phóng to ảnh minh chứng vỉ thuốc từ Dashboard */}
+      {dashboardProofPhoto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-gray-100 flex flex-col max-h-[90vh]">
+            <div className="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Camera size={18} className="text-primary" />
+                <h4 className="font-black text-sm text-[#1a2b4b]">
+                  Ảnh vỉ thuốc: {dashboardProofPhoto.medName}
+                </h4>
+              </div>
+              <button
+                onClick={() => setDashboardProofPhoto(null)}
+                className="w-8 h-8 rounded-full bg-gray-200/80 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 bg-gray-900 flex items-center justify-center min-h-[300px] max-h-[550px] overflow-hidden">
+              <img 
+                src={dashboardProofPhoto.url} 
+                alt="Minh chứng vỉ thuốc" 
+                className="w-full h-full object-contain rounded-xl"
+              />
+            </div>
+
+            <div className="p-3.5 bg-white border-t border-gray-100 flex justify-end">
+              <button
+                onClick={() => setDashboardProofPhoto(null)}
+                className="w-full py-2.5 rounded-xl bg-primary text-white font-bold text-xs shadow-md shadow-primary/20 cursor-pointer"
+              >
+                Đóng ảnh
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

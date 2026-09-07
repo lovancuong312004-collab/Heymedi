@@ -6,17 +6,20 @@ import {
   Scan, 
   Loader2, 
   ChevronRight,
-  Check,
-  CalendarCheck
+  Check, 
+  CalendarCheck,
+  Camera
 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import { cn } from "./lib/utils";
 import AddMedModal from "./caregiver/AddMedModal";
 import ScanUnknownMedModal from "./screens/ScanUnknownMedModal";
+import ElderlyCameraCaptureModal from "./components/ElderlyCameraCaptureModal";
 import { 
   getScheduleByDate, 
   getScheduleDaysSummary, 
   markAsTaken, 
+  uploadPillProofImage,
   type Reminder 
 } from "./services/medicationService";
 import { supabase } from "./lib/supabase";
@@ -31,6 +34,7 @@ export default function MedsScreen({ user }: Props) {
   const [activeTab, setActiveTab] = useState("Tất cả");
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
+  const [photoCaptureMed, setPhotoCaptureMed] = useState<Reminder | null>(null);
   
   const [schedule, setSchedule] = useState<Reminder[]>([]);
   const [daysSummary, setDaysSummary] = useState<Record<string, { count: number; allTaken: boolean; hasPending: boolean }>>({});
@@ -121,6 +125,42 @@ export default function MedsScreen({ user }: Props) {
     }
   };
 
+  const handleCaptureComplete = async (blob: Blob) => {
+    if (!photoCaptureMed) return;
+    try {
+      setMarkingId(photoCaptureMed.id);
+      const uploadedUrl = await uploadPillProofImage(blob, photoCaptureMed.id);
+      await markAsTaken(photoCaptureMed.id, uploadedUrl);
+
+      // Broadcast sang người chăm sóc
+      const nowIso = new Date().toISOString();
+      const channel = supabase.channel('sos-emergency-alerts');
+      await channel.send({
+        type: 'broadcast',
+        event: 'PILL_TAKEN_PROOF',
+        payload: {
+          patient_id: user?.id,
+          patient_name: user?.user_metadata?.full_name || "Bác",
+          reminder_id: photoCaptureMed.id,
+          med_name: photoCaptureMed.medication?.name || "Thuốc",
+          dosage: photoCaptureMed.medication?.dosage || "1 liều",
+          photo_url: uploadedUrl,
+          scheduled_time: photoCaptureMed.scheduled_time || nowIso,
+          taken_at: nowIso,
+          timestamp: nowIso
+        }
+      });
+
+      await loadScheduleForSelectedDate(selectedDate);
+      await loadDaysSummary();
+      setPhotoCaptureMed(null);
+    } catch (err) {
+      console.error("Lỗi xác nhận kèm ảnh:", err);
+    } finally {
+      setMarkingId(null);
+    }
+  };
+
   // Tính toán nhãn ngày
   const isToday = (d: Date) => {
     const now = new Date();
@@ -175,6 +215,16 @@ export default function MedsScreen({ user }: Props) {
           loadScheduleForSelectedDate(selectedDate);
           loadDaysSummary();
         }} 
+      />
+
+      {/* Modal Camera chụp ảnh minh chứng vỉ thuốc cho người già */}
+      <ElderlyCameraCaptureModal 
+        isOpen={!!photoCaptureMed}
+        onClose={() => setPhotoCaptureMed(null)}
+        title="Chụp Ảnh Vỉ Thuốc"
+        subtitle={`Chụp vỉ thuốc ${photoCaptureMed?.medication?.name || "uống"} để gửi cho con`}
+        guideText="ĐẶT VỈ THUỐC HOẶC THUỐC TRÊN TAY VÀO KHUNG"
+        onCaptureComplete={handleCaptureComplete}
       />
 
       <div className="p-4 sm:p-5 flex flex-col min-h-full bg-[#F4F7FB] pb-28 select-none">
@@ -341,6 +391,7 @@ export default function MedsScreen({ user }: Props) {
                     med={med} 
                     isTodaySelected={isToday(selectedDate)}
                     onConfirmTaken={() => handleConfirmTaken(med.id)}
+                    onTakePhoto={() => setPhotoCaptureMed(med)}
                     isMarking={markingId === med.id}
                   />
                 ))}
@@ -387,11 +438,13 @@ function MedItemCard({
   med, 
   isTodaySelected, 
   onConfirmTaken,
+  onTakePhoto,
   isMarking
 }: { 
   med: Reminder; 
   isTodaySelected: boolean; 
   onConfirmTaken: () => void;
+  onTakePhoto: () => void;
   isMarking: boolean;
 }) {
   const isDone = med.status === "taken";
@@ -453,19 +506,38 @@ function MedItemCard({
       {/* Nút hành động hoặc trạng thái */}
       <div className="w-full sm:w-auto flex items-center justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100">
         {isDone ? (
-          <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-100/80 px-3 py-1.5 rounded-full font-bold text-xs">
-            <Check size={15} strokeWidth={3} />
-            <span>Đã uống</span>
+          <div className="flex flex-col items-end gap-0.5">
+            <div className="flex items-center gap-1.5 text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-full font-black text-xs">
+              <Check size={14} strokeWidth={3} />
+              <span>Đã uống</span>
+            </div>
+            {med.taken_at && (
+              <span className="text-[10px] text-gray-500 font-semibold">
+                Lúc: {new Date(med.taken_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
           </div>
         ) : isTodaySelected ? (
-          <button
-            onClick={onConfirmTaken}
-            disabled={isMarking}
-            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-md shadow-primary/20 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
-          >
-            {isMarking ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={3} />}
-            <span>Tôi đã uống</span>
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={onTakePhoto}
+              disabled={isMarking}
+              className="flex-1 sm:flex-initial bg-blue-600 hover:bg-blue-700 text-white font-black text-xs px-3.5 py-2.5 rounded-xl shadow-md shadow-blue-600/20 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border-b-2 border-blue-900"
+              title="Chụp ảnh vỉ thuốc gửi cho người nhà"
+            >
+              <Camera size={14} />
+              <span>Uống + Chụp ảnh</span>
+            </button>
+
+            <button
+              onClick={onConfirmTaken}
+              disabled={isMarking}
+              className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-3.5 py-2.5 rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border-b-2 border-emerald-900"
+            >
+              {isMarking ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={3} />}
+              <span>Đã uống</span>
+            </button>
+          </div>
         ) : (
           <span className="text-gray-400 text-xs font-semibold bg-gray-100 px-3 py-1.5 rounded-full">
             Lịch dự kiến

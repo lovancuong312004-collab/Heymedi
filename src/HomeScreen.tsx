@@ -103,7 +103,11 @@ export default function HomeScreen({
   const handleTakeMedication = async (reminderId: string, photoUrl?: string) => {
     try {
       setTakingId(reminderId);
-      await markAsTaken(reminderId);
+      await markAsTaken(reminderId, photoUrl);
+
+      const targetMed = schedule.find(s => s.id === reminderId) || alertMed;
+      const nowIso = new Date().toISOString();
+
       if (photoUrl) {
         // Broadcast xác nhận kèm ảnh đối chiếu thuốc cho người nhà
         const channel = supabase.channel('sos-emergency-alerts');
@@ -114,8 +118,12 @@ export default function HomeScreen({
             patient_id: patientId,
             patient_name: patientDisplayName,
             reminder_id: reminderId,
+            med_name: targetMed?.medication?.name || "Thuốc",
+            dosage: targetMed?.medication?.dosage || "1 liều",
             photo_url: photoUrl,
-            timestamp: new Date().toISOString()
+            scheduled_time: targetMed?.scheduled_time || nowIso,
+            taken_at: nowIso,
+            timestamp: nowIso
           }
         }).catch(() => {});
       }
@@ -186,11 +194,14 @@ export default function HomeScreen({
       {alertMed && (
         <MedicationAlertScreen
           medicine={{
+            id: alertMed.id,
             name: alertMed.medication?.name || "Thuốc",
             dosage: alertMed.medication?.dosage || "1 liều",
             instruction: alertMed.medication?.instructions || "Theo chỉ dẫn",
-            time: new Date(alertMed.scheduled_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+            time: new Date(alertMed.scheduled_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+            scheduled_time: alertMed.scheduled_time
           }}
+          patientName={patientDisplayName}
           verificationMode={verificationMode}
           onTaken={(photoUrl?: string) => handleTakeMedication(alertMed.id, photoUrl)}
           onSnooze={handleSnooze}

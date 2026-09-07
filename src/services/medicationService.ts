@@ -17,7 +17,150 @@ export interface Reminder {
   scheduled_time: string;
   status: 'pending' | 'taken' | 'missed';
   taken_at: string | null;
+  proof_image_url?: string | null;
   medication?: Medication;
+}
+
+export interface TimingOffsetResult {
+  status: 'on_time' | 'late' | 'early';
+  diffMinutes: number;
+  label: string;
+  badgeColor: 'emerald' | 'rose' | 'amber';
+  detailText: string;
+}
+
+/**
+ * Tính toán độ lệch thời gian giữa giờ hẹn và giờ uống thực tế
+ */
+export function getMedicationTimingOffset(
+  scheduledTime: string, 
+  takenAt: string | null
+): TimingOffsetResult | null {
+  if (!takenAt) return null;
+  try {
+    const schedDate = new Date(scheduledTime);
+    const actualDate = new Date(takenAt);
+    const diffMinutes = Math.round((actualDate.getTime() - schedDate.getTime()) / 60000);
+
+    const formatTime = (d: Date) => 
+      d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    
+    const schedStr = formatTime(schedDate);
+    const actualStr = formatTime(actualDate);
+
+    // Trong vòng 10 phút trước hoặc sau giờ hẹn được tính là đúng giờ
+    if (Math.abs(diffMinutes) <= 10) {
+      return {
+        status: 'on_time',
+        diffMinutes,
+        label: 'Đúng giờ',
+        badgeColor: 'emerald',
+        detailText: `Uống đúng giờ (Lịch ${schedStr}, Uống ${actualStr})`
+      };
+    } else if (diffMinutes > 10) {
+      const hours = Math.floor(diffMinutes / 60);
+      const mins = diffMinutes % 60;
+      const durationStr = hours > 0 
+        ? `${hours}h${mins > 0 ? ` ${mins}p` : ''}` 
+        : `${mins} phút`;
+
+      return {
+        status: 'late',
+        diffMinutes,
+        label: `Trễ ${durationStr}`,
+        badgeColor: 'rose',
+        detailText: `Uống trễ ${durationStr} (Lịch ${schedStr}, Uống ${actualStr})`
+      };
+    } else {
+      const diffEarly = Math.abs(diffMinutes);
+      const hours = Math.floor(diffEarly / 60);
+      const mins = diffEarly % 60;
+      const durationStr = hours > 0 
+        ? `${hours}h${mins > 0 ? ` ${mins}p` : ''}` 
+        : `${mins} phút`;
+
+      return {
+        status: 'early',
+        diffMinutes,
+        label: `Sớm ${durationStr}`,
+        badgeColor: 'amber',
+        detailText: `Uống sớm ${durationStr} (Lịch ${schedStr}, Uống ${actualStr})`
+      };
+    }
+  } catch (err) {
+    console.error("getMedicationTimingOffset error:", err);
+    return null;
+  }
+}
+
+/**
+ * Lưu URL ảnh minh chứng vào bộ nhớ cục bộ để truy xuất tức thời
+ */
+export function savePillProof(reminderId: string, proofUrl: string): void {
+  if (!reminderId || !proofUrl) return;
+  try {
+    localStorage.setItem(`pill_proof_${reminderId}`, proofUrl);
+  } catch (e) {
+    console.warn("localStorage quota exceeded for pill proof:", e);
+  }
+}
+
+/**
+ * Lấy URL ảnh minh chứng từ bộ nhớ cục bộ
+ */
+export function getPillProof(reminderId: string): string | null {
+  if (!reminderId) return null;
+  try {
+    return localStorage.getItem(`pill_proof_${reminderId}`) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Tải ảnh chụp minh chứng vỉ thuốc lên Supabase Storage bucket medication_images
+ * Trả về Public URL vĩnh viễn có thể xem từ mọi thiết bị (máy người chăm sóc, con cái, bác sĩ)
+ */
+export async function uploadPillProofImage(
+  fileOrBlob: Blob | File,
+  reminderId?: string
+): Promise<string> {
+  try {
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(7);
+    const fileName = `proof_${reminderId || 'intake'}_${timestamp}_${randomStr}.jpg`;
+
+    const { error } = await supabase.storage
+      .from('medication_images')
+      .upload(fileName, fileOrBlob, {
+        contentType: 'image/jpeg',
+        upsert: true
+      });
+
+    if (error) {
+      console.warn("Lỗi upload Supabase Storage, chuyển sang base64 fallback:", error);
+      return convertBlobToBase64(fileOrBlob);
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('medication_images')
+      .getPublicUrl(fileName);
+
+    return publicUrlData.publicUrl;
+  } catch (err) {
+    console.error("uploadPillProofImage failed, using base64 fallback:", err);
+    return convertBlobToBase64(fileOrBlob);
+  }
+}
+
+function convertBlobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      resolve(reader.result as string);
+    };
+    reader.readAsDataURL(blob);
+  });
 }
 
 export interface AddMedicationCourseParams {
@@ -63,6 +206,7 @@ export async function getScheduleByDate(patientId: string, targetDate: Date | st
 
     return data.map(r => ({
       ...r,
+      proof_image_url: (r as any).proof_image_url || getPillProof(r.id),
       medication: Array.isArray(r.medication) ? r.medication[0] : r.medication
     })) as Reminder[];
   } catch (err) {
@@ -123,16 +267,36 @@ export async function getScheduleDaysSummary(
 }
 
 /**
- * Mark a reminder as taken.
+ * Mark a reminder as taken with optional proof image URL.
  */
-export async function markAsTaken(reminderId: string): Promise<void> {
+export async function markAsTaken(reminderId: string, proofImageUrl?: string | null): Promise<void> {
   if (!reminderId) return;
+  const takenAt = new Date().toISOString();
+
+  if (proofImageUrl) {
+    savePillProof(reminderId, proofImageUrl);
+  }
+
   try {
+    if (proofImageUrl) {
+      const { error: fullError } = await supabase
+        .from('reminders')
+        .update({ 
+          status: 'taken',
+          taken_at: takenAt,
+          proof_image_url: proofImageUrl
+        })
+        .eq('id', reminderId);
+
+      if (!fullError) return;
+      console.warn("Cột proof_image_url chưa có trong schema Supabase, tiếp tục cập nhật cơ bản:", fullError.message);
+    }
+
     const { error } = await supabase
       .from('reminders')
       .update({ 
         status: 'taken',
-        taken_at: new Date().toISOString()
+        taken_at: takenAt
       })
       .eq('id', reminderId);
 

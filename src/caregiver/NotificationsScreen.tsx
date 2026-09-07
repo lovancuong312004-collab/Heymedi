@@ -8,12 +8,15 @@ import {
   CheckSquare, 
   Loader2,
   Clock,
-  PhoneOff
+  PhoneOff,
+  Camera,
+  X
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useFamily } from "../contexts/FamilyContext";
 import { supabase } from "../lib/supabase";
 import { getMissedCalls, markMissedCallsAsRead, type MissedCall } from "../services/missedCallService";
+import { getMedicationTimingOffset, getPillProof } from "../services/medicationService";
 import CallModal from "./CallModal";
 
 interface Props {
@@ -30,6 +33,9 @@ interface NotificationItem {
   dosage: string;
   scheduledTime: string;
   isUnread: boolean;
+  photoUrl?: string | null;
+  timingBadge?: string;
+  timingColor?: 'emerald' | 'rose' | 'amber';
 }
 
 export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) {
@@ -41,6 +47,7 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
   const [missedCalls, setMissedCalls] = useState<MissedCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [callingMedNote, setCallingMedNote] = useState<string | null>(null);
+  const [viewingPhoto, setViewingPhoto] = useState<{ url: string; medName: string } | null>(null);
 
   useEffect(() => {
     markMissedCallsAsRead();
@@ -98,20 +105,42 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
         const scheduledDate = new Date(r.scheduled_time);
         const scheduledTimeStr = scheduledDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
+        const proofUrl = (r as any).proof_image_url || getPillProof(r.id);
+
         if (r.status === 'taken') {
           const takenDate = r.taken_at ? new Date(r.taken_at) : scheduledDate;
           const takenTimeStr = takenDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+          const timingOffset = getMedicationTimingOffset(r.scheduled_time, r.taken_at);
+
+          let dynamicTitle = "Đã uống thuốc";
+          let timingBadge = "Đúng giờ";
+          let timingColor: 'emerald' | 'rose' | 'amber' = 'emerald';
+
+          if (timingOffset) {
+            timingBadge = timingOffset.label;
+            timingColor = timingOffset.badgeColor;
+            if (timingOffset.status === 'late') {
+              dynamicTitle = `⚠️ ĐÃ UỐNG TRỄ ${timingOffset.label.replace('Trễ ', '').toUpperCase()}`;
+            } else if (timingOffset.status === 'early') {
+              dynamicTitle = `Uống sớm ${timingOffset.label.replace('Sớm ', '')}`;
+            } else {
+              dynamicTitle = "Đã uống thuốc đúng giờ";
+            }
+          }
 
           list.push({
             id: r.id,
             type: "taken",
-            title: "Đã uống thuốc đúng giờ",
-            message: `${patientName} đã uống xong ${medName} (${dosage || "1 liều"}) theo đúng lịch trình cữ ${scheduledTimeStr}.`,
+            title: dynamicTitle,
+            message: `${patientName} đã uống xong ${medName} (${dosage || "1 liều"}). Lịch cữ ${scheduledTimeStr} • Uống lúc ${takenTimeStr}${timingOffset ? ` (${timingOffset.label})` : ''}.${proofUrl ? ' Đã có ảnh chụp vỉ thuốc minh chứng!' : ''}`,
             timestamp: `Xác nhận lúc ${takenTimeStr} hôm nay`,
             medName,
             dosage,
             scheduledTime: scheduledTimeStr,
-            isUnread: false
+            isUnread: false,
+            photoUrl: proofUrl,
+            timingBadge,
+            timingColor
           });
         } else if (r.status === 'missed' || (r.status === 'pending' && now.getTime() - scheduledDate.getTime() > 15 * 60000)) {
           const diffMinutes = Math.max(15, Math.floor((now.getTime() - scheduledDate.getTime()) / 60000));
@@ -335,9 +364,15 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
                     <div className="flex items-center justify-between">
                       <span className={cn(
                         "text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide",
-                        isOverdue ? "bg-red-100 text-danger" : "bg-green-100 text-success"
+                        isOverdue 
+                          ? "bg-red-100 text-danger" 
+                          : item.timingColor === "rose"
+                          ? "bg-rose-100 text-rose-800 animate-pulse font-black"
+                          : item.timingColor === "amber"
+                          ? "bg-amber-100 text-amber-800 font-bold"
+                          : "bg-green-100 text-success"
                       )}>
-                        {isOverdue ? "Quá giờ chưa uống" : "Đã uống đúng giờ"}
+                        {isOverdue ? "Quá giờ chưa uống" : (item.timingBadge || "Đã uống")}
                       </span>
                       <span className="text-[11px] text-gray-400 font-medium">{item.scheduledTime}</span>
                     </div>
@@ -355,6 +390,29 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
                 <p className="text-xs text-gray-700 font-medium leading-relaxed bg-white/70 p-3 rounded-2xl border border-gray-100">
                   {item.message}
                 </p>
+
+                {/* Ảnh chụp minh chứng vỉ thuốc nếu có */}
+                {item.photoUrl && (
+                  <div className="flex items-center justify-between bg-emerald-50/80 border border-emerald-200 rounded-2xl p-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-900 border border-emerald-300 shrink-0">
+                        <img src={item.photoUrl} alt="Ảnh vỉ thuốc" className="w-full h-full object-cover" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-emerald-900 block">Minh chứng vỉ thuốc</span>
+                        <span className="text-[10px] text-emerald-700 font-medium">Ảnh chụp lúc uống thuốc</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setViewingPhoto({ url: item.photoUrl!, medName: item.medName })}
+                      className="text-xs font-black text-emerald-800 bg-white hover:bg-emerald-100 px-3 py-1.5 rounded-xl border border-emerald-300 active:scale-95 transition-all cursor-pointer shadow-2xs"
+                    >
+                      Xem ảnh to
+                    </button>
+                  </div>
+                )}
 
                 {/* Footer / Action */}
                 <div className="flex items-center justify-between pt-1">
@@ -388,6 +446,45 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
           avatarUrl={patientInfo?.avatar_url}
           reminderNote={callingMedNote}
         />
+      )}
+
+      {/* Modal phóng to ảnh minh chứng vỉ thuốc */}
+      {viewingPhoto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-gray-100 flex flex-col max-h-[90vh]">
+            <div className="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Camera size={18} className="text-primary" />
+                <h4 className="font-black text-sm text-[#1a2b4b]">
+                  Ảnh vỉ thuốc: {viewingPhoto.medName}
+                </h4>
+              </div>
+              <button
+                onClick={() => setViewingPhoto(null)}
+                className="w-8 h-8 rounded-full bg-gray-200/80 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 bg-gray-900 flex items-center justify-center min-h-[300px] max-h-[550px] overflow-hidden">
+              <img 
+                src={viewingPhoto.url} 
+                alt="Minh chứng vỉ thuốc" 
+                className="w-full h-full object-contain rounded-xl"
+              />
+            </div>
+
+            <div className="p-3.5 bg-white border-t border-gray-100 flex justify-end">
+              <button
+                onClick={() => setViewingPhoto(null)}
+                className="w-full py-2.5 rounded-xl bg-primary text-white font-bold text-xs shadow-md shadow-primary/20 cursor-pointer"
+              >
+                Đóng ảnh
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
