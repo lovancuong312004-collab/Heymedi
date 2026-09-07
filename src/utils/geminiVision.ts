@@ -296,6 +296,35 @@ export interface ParsedMedication {
   calculationNote?: string; // Giải thích cơ sở y khoa tính lộ trình
   is_prn?: boolean; // Thuốc uống khi có triệu chứng / Khi đau
   is_locked_by_doctor?: boolean; // Cố định theo chỉ định bác sĩ
+  custom_photo_url?: string; // Ảnh chụp vỉ/hộp thuốc thực tế riêng cho loại thuốc này
+}
+
+/**
+ * Làm sạch tên thuốc, loại bỏ danh sách tá dược hóa học rườm rà trong ngoặc đơn
+ * Giúp người già dễ đọc và AI phát âm tự nhiên, súc tích
+ * Ví dụ: "PAPAZE (magnesi aluminometasilicate...)" -> "PAPAZE"
+ */
+export function cleanMedicineTitle(name: string): string {
+  if (!name) return "Thuốc";
+  let cleaned = name.trim();
+  
+  const parenMatch = cleaned.match(/^([^(]+)\s*\((.+)\)$/);
+  if (parenMatch) {
+    const mainName = parenMatch[1].trim();
+    const insideParen = parenMatch[2].trim();
+    
+    // Nếu trong ngoặc có dấu phẩy hoặc dài hơn 20 ký tự hoặc chứa các từ hóa dược tá dược
+    if (
+      insideParen.includes(",") || 
+      insideParen.includes("+") || 
+      insideParen.length > 20 ||
+      /alumin|bicarbonat|scopolia|amylas|proteas|clorid|sulfat|natri|kali|acid|acidum|tá dược/i.test(insideParen)
+    ) {
+      return mainName;
+    }
+  }
+  
+  return cleaned.replace(/\s+/g, ' ');
 }
 
 export interface PrescriptionAnalysisResult {
@@ -441,8 +470,8 @@ BƯỚC 2: NẾU ĐÚNG LÀ ĐƠN THUỐC Y TẾ:
   "doctorName": Họ tên bác sĩ kê đơn
   "revisitDays": Số ngày hẹn tái khám (nếu có, mặc định 30)
   "medications": Danh sách các thuốc trong đơn:
-    - "name": Tên thuốc và hàm lượng (VD: Amlodipine 5mg)
-    - "generic_name": Hoạt chất
+    - "name": Tên thương mại/biệt dược chính và hàm lượng ngắn gọn (VD: Amlodipine 5mg, Yesom 40, Papaze, Sucrate Gel). QUY TẮC BẮT BUỘC: TUYỆT ĐỐI KHÔNG đưa danh sách tá dược, thành phần hóa học dài dòng trong ngoặc đơn vào "name"! Đưa các thành phần phụ vào "generic_name".
+    - "generic_name": Hoạt chất chính
     - "form": Viên nén / Viên sủi / Viên nang / Gói / Chai
     - "dosage": Liều dùng (VD: 1 viên, 2 viên)
     - "total_quantity": Tổng số lượng viên cấp
@@ -498,7 +527,7 @@ TRẢ VỀ DUY NHẤT CHUỖI JSON HỢP LỆ (Không có markdown block, không
           const duration = typeof m.duration_days === 'number' && m.duration_days > 0 ? m.duration_days : 30;
 
           return {
-            name: m.name || "Thuốc không rõ tên",
+            name: cleanMedicineTitle(m.name || "Thuốc không rõ tên"),
             generic_name: m.generic_name || "",
             form: m.form || "Viên nén",
             dosage: m.dosage || "1 viên",

@@ -16,12 +16,16 @@ import {
   HeartPulse,
   ShieldCheck,
   Camera,
-  X,
-  Check
+  Check,
+  ChevronDown,
+  ChevronUp,
+  X
 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import { cn } from "../lib/utils";
 import { useFamily } from "../contexts/FamilyContext";
+import { cleanMedicineTitle } from "../utils/geminiVision";
+import ElderlyCameraCaptureModal from "../components/ElderlyCameraCaptureModal";
 import { 
   getScheduleByDate, 
   getScheduleDaysSummary, 
@@ -110,6 +114,9 @@ export default function CaregiverMedsScreen({
     timeStr: string;
     timingLabel?: string;
   } | null>(null);
+
+  // Modal chụp ảnh vỉ thuốc riêng trong tab Lộ trình
+  const [capturingMedPhoto, setCapturingMedPhoto] = useState<{ id: string; name: string } | null>(null);
 
   // Dải ngày chọn nhanh (Từ 3 ngày trước đến 10 ngày tới)
   const dateStrip = useMemo(() => {
@@ -354,6 +361,66 @@ export default function CaregiverMedsScreen({
     return period === activeFilter;
   });
 
+  // Gom nhóm các thuốc cùng giờ thành các Cữ thuốc cho Người Chăm Sóc
+  const doseSessions = useMemo(() => {
+    const map = new Map<string, Reminder[]>();
+    filteredMeds.forEach(r => {
+      const d = new Date(r.scheduled_time);
+      const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      if (!map.has(timeStr)) {
+        map.set(timeStr, []);
+      }
+      map.get(timeStr)!.push(r);
+    });
+
+    const groups: Array<{
+      timeStr: string;
+      mealLabel: string;
+      scheduled_time: string;
+      items: Reminder[];
+      isAllTaken: boolean;
+      takenCount: number;
+    }> = [];
+
+    map.forEach((items, timeStr) => {
+      const hourVal = parseInt(timeStr.split(':')[0], 10);
+      const meal = hourVal < 11 ? "Cữ Sáng (Sau ăn)" : hourVal < 15 ? "Cữ Trưa (Sau ăn)" : hourVal < 20 ? "Cữ Tối (Sau ăn)" : "Cữ Trước Ngủ";
+      const count = items.filter(i => i.status === 'taken').length;
+      groups.push({
+        timeStr,
+        mealLabel: meal,
+        scheduled_time: items[0].scheduled_time,
+        items,
+        isAllTaken: count === items.length,
+        takenCount: count
+      });
+    });
+
+    groups.sort((a, b) => a.timeStr.localeCompare(b.timeStr));
+    return groups;
+  }, [filteredMeds]);
+
+  const handleToggleSessionTaken = async (items: Reminder[], targetStatus: 'taken' | 'pending') => {
+    try {
+      setMarkingId("session");
+      for (const item of items) {
+        if (targetStatus === 'taken' && item.status !== 'taken') {
+          await markAsTaken(item.id);
+        } else if (targetStatus === 'pending' && item.status === 'taken') {
+          await supabase
+            .from('reminders')
+            .update({ status: 'pending', taken_at: null })
+            .eq('id', item.id);
+        }
+      }
+      await loadData();
+    } catch (err) {
+      console.error("Failed to update session status:", err);
+    } finally {
+      setMarkingId(null);
+    }
+  };
+
   const takenCount = schedule.filter(s => s.status === 'taken').length;
   const totalCount = schedule.length;
   const progressPercent = totalCount > 0 ? Math.round((takenCount / totalCount) * 100) : 0;
@@ -561,7 +628,7 @@ export default function CaregiverMedsScreen({
           <div className="flex items-center gap-2">
             <CalendarCheck size={18} className="text-primary" />
             <h3 className="font-extrabold text-[#1a2b4b] text-sm sm:text-base">
-              Chi tiết các cữ thuốc ({filteredMeds.length})
+              Chi tiết các cữ thuốc ({doseSessions.length} cữ • {filteredMeds.length} thuốc)
             </h3>
           </div>
           <span className="text-xs font-semibold text-gray-500">{formattedLunarDate}</span>
@@ -573,122 +640,32 @@ export default function CaregiverMedsScreen({
               <Loader2 size={36} className="text-primary animate-spin mb-2" />
               <p className="text-gray-500 font-bold text-sm">Đang tải lịch thuốc...</p>
             </div>
-          ) : filteredMeds.length > 0 ? (
-            filteredMeds.map((med) => {
-              const isDone = med.status === 'taken';
-              const d = new Date(med.scheduled_time);
-              const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-              const timingOffset = isDone && med.taken_at 
-                ? getMedicationTimingOffset(med.scheduled_time, med.taken_at)
-                : null;
-              const proofUrl = (med as any).proof_image_url;
-
-              return (
-                <div 
-                  key={med.id} 
-                  className={cn(
-                    "border-2 rounded-2xl p-3.5 flex items-center justify-between gap-3 transition-all",
-                    isDone ? "bg-emerald-50/50 border-emerald-200" : "bg-white border-gray-200 hover:border-blue-300"
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      "w-12 h-12 rounded-xl flex flex-col items-center justify-center font-black text-xs shrink-0",
-                      isDone ? "bg-emerald-100 text-emerald-800" : "bg-blue-50 text-primary"
-                    )}>
-                      <span>{timeStr}</span>
-                    </div>
-
-                    <div className="flex flex-col">
-                      <span className="font-extrabold text-sm sm:text-base text-[#1a2b4b] leading-tight">
-                        {med.medication?.name || "Thuốc"}
-                      </span>
-                      <span className="text-xs text-primary font-bold mt-0.5">
-                        Liều: {med.medication?.dosage || "1 liều"}
-                      </span>
-                      {med.medication?.instructions && (
-                        <span className="text-xs text-gray-500 font-medium line-clamp-1 mt-0.5">
-                          {med.medication.instructions}
-                        </span>
-                      )}
-
-                      {/* Độ lệch giờ uống thực tế */}
-                      {isDone && timingOffset && (
-                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                          <span className={cn(
-                            "text-[10px] font-black px-2 py-0.5 rounded-full border",
-                            timingOffset.badgeColor === "emerald"
-                              ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                              : timingOffset.badgeColor === "rose"
-                              ? "bg-rose-100 text-rose-800 border-rose-300 animate-pulse font-black"
-                              : "bg-amber-100 text-amber-800 border-amber-300 font-bold"
-                          )}>
-                            {timingOffset.label}
-                          </span>
-                          <span className="text-[10px] text-gray-500 font-medium">
-                            (Uống lúc: {new Date(med.taken_at!).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Nút xem ảnh minh chứng vỉ thuốc */}
-                      {proofUrl && (
-                        <div className="mt-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setViewingPhotoUrl({
-                              url: proofUrl,
-                              medName: med.medication?.name || "Thuốc",
-                              timeStr,
-                              timingLabel: timingOffset?.label
-                            })}
-                            className="inline-flex items-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-xl text-[11px] font-bold active:scale-95 transition-all cursor-pointer shadow-2xs"
-                          >
-                            <Camera size={13} />
-                            <span>📸 Xem ảnh vỉ thuốc</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => handleToggleTaken(med.id, med.status)}
-                      disabled={markingId === med.id}
-                      className={cn(
-                        "px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 transition-all cursor-pointer",
-                        isDone 
-                          ? "bg-emerald-600 text-white shadow-sm" 
-                          : "bg-gray-100 hover:bg-emerald-50 text-gray-600 hover:text-emerald-600 border border-gray-200"
-                      )}
-                    >
-                      {markingId === med.id ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : (
-                        <CheckCircle2 size={14} />
-                      )}
-                      <span>{isDone ? "Đã uống" : "Đánh dấu"}</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setDeleteConfirmModal({
-                          reminderId: med.id,
-                          medicationId: med.medication_id,
-                          medName: med.medication?.name || "Thuốc",
-                          timeStr
-                        });
-                      }}
-                      className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-rose-600 flex items-center justify-center transition-colors cursor-pointer"
-                      title="Tùy chọn xóa cữ hoặc toàn bộ lộ trình"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })
+          ) : doseSessions.length > 0 ? (
+            doseSessions.map((session) => (
+              <CaregiverDoseSessionCard
+                key={session.timeStr}
+                session={session}
+                onToggleSession={(status) => handleToggleSessionTaken(session.items, status)}
+                onToggleSingle={(id, status) => handleToggleTaken(id, status)}
+                onOpenDelete={(med, timeStr) => {
+                  setDeleteConfirmModal({
+                    reminderId: med.id,
+                    medicationId: med.medication_id,
+                    medName: cleanMedicineTitle(med.medication?.name || "Thuốc"),
+                    timeStr
+                  });
+                }}
+                onViewPhoto={(proofUrl, medName, timeStr, timingLabel) => {
+                  setViewingPhotoUrl({
+                    url: proofUrl,
+                    medName,
+                    timeStr,
+                    timingLabel
+                  });
+                }}
+                markingId={markingId}
+              />
+            ))
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <CheckCircle2 size={40} className="text-gray-300 mb-2" strokeWidth={1.5} />
@@ -739,7 +716,7 @@ export default function CaregiverMedsScreen({
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="text-base font-black text-[#1a2b4b]">
-                              {med.name}
+                              {cleanMedicineTitle(med.name)}
                             </h4>
                             {isPRN ? (
                               <span className="text-[11px] font-black bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -771,7 +748,7 @@ export default function CaregiverMedsScreen({
 
                           {/* Nút Hủy toàn bộ lộ trình thuốc 1 chạm qua In-App Modal */}
                           <button
-                            onClick={() => setConfirmCourseDelete({ medId: med.id, medName: med.name })}
+                            onClick={() => setConfirmCourseDelete({ medId: med.id, medName: cleanMedicineTitle(med.name) })}
                             disabled={isDeleting}
                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 active:scale-95 transition-all cursor-pointer shadow-2xs"
                             title="Hủy thuốc và xóa tất cả cữ nhắc trên mọi ngày"
@@ -784,6 +761,33 @@ export default function CaregiverMedsScreen({
                             <span>Hủy</span>
                           </button>
                         </div>
+                      </div>
+
+                      {/* Ảnh vỉ/hộp thuốc thực tế */}
+                      <div className="flex items-center gap-3 bg-blue-50/50 p-2.5 rounded-2xl border border-blue-100">
+                        <div className="w-12 h-12 rounded-xl bg-white border border-gray-200 overflow-hidden flex items-center justify-center shrink-0 shadow-2xs">
+                          {med.image_url ? (
+                            <img src={med.image_url} alt="Vỉ thuốc" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-xl">💊</span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-xs font-black text-[#1a2b4b] block truncate">
+                            {med.image_url ? "✓ Đã có ảnh vỉ thuốc thực tế" : "Chưa có ảnh vỉ/hộp thuốc thực tế"}
+                          </span>
+                          <span className="text-[10.5px] text-gray-500 font-medium block truncate">
+                            {med.image_url ? "Người già sẽ nhìn thấy ảnh này khi chuông reo" : "Chụp để hiển thị trên màn hình người già"}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setCapturingMedPhoto({ id: med.id, name: cleanMedicineTitle(med.name) })}
+                          className="inline-flex items-center gap-1 bg-white hover:bg-blue-50 text-primary border border-blue-200 px-2.5 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer shadow-2xs shrink-0"
+                        >
+                          <Camera size={13} />
+                          <span>{med.image_url ? "Đổi ảnh" : "Chụp vỉ"}</span>
+                        </button>
                       </div>
 
                       {/* Hướng dẫn & Ghi chú lộ trình */}
@@ -1292,6 +1296,244 @@ export default function CaregiverMedsScreen({
         </div>
       )}
 
+      {/* MODAL CAMERA CHỤP ẢNH VỈ THUỐC TRONG TAB LỘ TRÌNH */}
+      {capturingMedPhoto !== null && (
+        <ElderlyCameraCaptureModal
+          isOpen={capturingMedPhoto !== null}
+          onClose={() => setCapturingMedPhoto(null)}
+          title={`Chụp Vỉ Thuốc: ${capturingMedPhoto.name}`}
+          subtitle="Chụp ảnh vỉ hoặc hộp thuốc thực tế để người già dễ nhận diện"
+          guideText="ĐẶT VỈ HOẶC HỘP THUỐC VÀO CHÍNH GIỮA KHUNG HÌNH"
+          confirmButtonText="LƯU ẢNH VỈ THUỐC NÀY"
+          onCaptureComplete={async (blob, previewUrl) => {
+            const targetId = capturingMedPhoto.id;
+            try {
+              const fileName = `blister_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+              const { data } = await supabase.storage
+                .from('medication_images')
+                .upload(fileName, blob, { upsert: true, contentType: 'image/jpeg' });
+              let finalUrl = previewUrl;
+              if (data) {
+                const { data: publicUrlData } = supabase.storage
+                  .from('medication_images')
+                  .getPublicUrl(fileName);
+                finalUrl = publicUrlData.publicUrl;
+              }
+              await supabase
+                .from('medications')
+                .update({ image_url: finalUrl })
+                .eq('id', targetId);
+
+              await loadCourseData();
+              await loadData();
+            } catch (err) {
+              console.error("Lỗi lưu ảnh vỉ thuốc:", err);
+            } finally {
+              setCapturingMedPhoto(null);
+            }
+          }}
+        />
+      )}
+
+    </div>
+  );
+}
+
+function CaregiverDoseSessionCard({
+  session,
+  onToggleSession,
+  onToggleSingle,
+  onOpenDelete,
+  onViewPhoto,
+  markingId
+}: {
+  session: {
+    timeStr: string;
+    mealLabel: string;
+    scheduled_time: string;
+    items: Reminder[];
+    isAllTaken: boolean;
+    takenCount: number;
+  };
+  onToggleSession: (status: 'taken' | 'pending') => void;
+  onToggleSingle: (id: string, status: string) => void;
+  onOpenDelete: (reminder: Reminder, timeStr: string) => void;
+  onViewPhoto: (proofUrl: string, medName: string, timeStr: string, timingLabel?: string) => void;
+  markingId: string | null;
+}) {
+  const [isExpanded, setIsExpanded] = useState(!session.isAllTaken);
+  const isDone = session.isAllTaken;
+
+  return (
+    <div className={cn(
+      "border-2 rounded-2xl overflow-hidden transition-all shadow-2xs",
+      isDone ? "bg-emerald-50/40 border-emerald-200" : "bg-white border-gray-200 hover:border-blue-300"
+    )}>
+      {/* Header cữ thuốc */}
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="p-3 sm:p-3.5 flex items-center justify-between cursor-pointer select-none bg-gradient-to-r from-transparent to-gray-50/50"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={cn(
+            "w-12 h-12 rounded-xl flex flex-col items-center justify-center font-black text-xs shrink-0 border",
+            isDone ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-blue-50 text-primary border-blue-200"
+          )}>
+            <span className="text-sm font-black leading-none">{session.timeStr}</span>
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="font-extrabold text-sm sm:text-base text-[#1a2b4b] truncate">{session.mealLabel}</span>
+              <span className="text-[10px] font-bold bg-blue-100/70 text-blue-800 px-2 py-0.2 rounded-full shrink-0">
+                {session.items.length} thuốc
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 font-semibold truncate">
+              {session.items.map(m => cleanMedicineTitle(m.medication?.name || "Thuốc")).join(", ")}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          {isDone ? (
+            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+              <Check size={11} strokeWidth={3} />
+              <span>Đã uống đủ</span>
+            </span>
+          ) : (
+            <span className="text-[11px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2.5 py-0.5 rounded-full">
+              {session.takenCount}/{session.items.length} đã uống
+            </span>
+          )}
+
+          <div className="text-gray-400 p-0.5">
+            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </div>
+        </div>
+      </div>
+
+      {/* Nội dung danh sách thuốc trong cữ khi mở rộng */}
+      {isExpanded && (
+        <div className="p-3 pt-1 border-t border-gray-100 space-y-2.5 animate-fade-in bg-white/60">
+          <div className="space-y-2">
+            {session.items.map((med) => {
+              const medDone = med.status === 'taken';
+              const d = new Date(med.scheduled_time);
+              const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+              const timingOffset = medDone && med.taken_at 
+                ? getMedicationTimingOffset(med.scheduled_time, med.taken_at)
+                : null;
+              const proofUrl = (med as any).proof_image_url;
+              const cleanName = cleanMedicineTitle(med.medication?.name || "Thuốc");
+
+              return (
+                <div 
+                  key={med.id}
+                  className={cn(
+                    "p-3 rounded-xl border flex items-center justify-between gap-2.5 transition-all",
+                    medDone ? "bg-emerald-50/50 border-emerald-200" : "bg-gray-50/80 border-gray-200"
+                  )}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 overflow-hidden shrink-0 flex items-center justify-center">
+                      {med.medication?.image_url ? (
+                        <img src={med.medication.image_url} alt={cleanName} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-base">💊</span>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-extrabold text-sm text-[#1a2b4b] truncate">{cleanName}</h4>
+                      <p className="text-xs text-primary font-bold truncate">
+                        Liều: {med.medication?.dosage || "1 viên"}
+                        {med.medication?.instructions && (
+                          <span className="text-gray-500 font-normal"> • {med.medication.instructions.split('|')[0]}</span>
+                        )}
+                      </p>
+
+                      {/* Độ lệch giờ */}
+                      {medDone && timingOffset && (
+                        <div className="flex items-center gap-1 mt-1 flex-wrap">
+                          <span className={cn(
+                            "text-[10px] font-black px-1.5 py-0.2 rounded-full border",
+                            timingOffset.badgeColor === "emerald"
+                              ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                              : "bg-amber-100 text-amber-800 border-amber-300"
+                          )}>
+                            {timingOffset.label}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Nút xem ảnh minh chứng vỉ thuốc */}
+                      {proofUrl && (
+                        <div className="mt-1">
+                          <button
+                            type="button"
+                            onClick={() => onViewPhoto(proofUrl, cleanName, timeStr, timingOffset?.label)}
+                            className="inline-flex items-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer"
+                          >
+                            <Camera size={11} />
+                            <span>📸 Xem ảnh vỉ thuốc</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => onToggleSingle(med.id, med.status)}
+                      disabled={markingId === med.id}
+                      className={cn(
+                        "px-2.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 transition-all cursor-pointer",
+                        medDone 
+                          ? "bg-emerald-600 text-white shadow-xs" 
+                          : "bg-white hover:bg-emerald-50 text-gray-600 border border-gray-200"
+                      )}
+                    >
+                      {markingId === med.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                      <span>{medDone ? "Đã uống" : "Đánh dấu"}</span>
+                    </button>
+
+                    <button
+                      onClick={() => onOpenDelete(med, timeStr)}
+                      className="w-7 h-7 rounded-xl bg-white hover:bg-red-50 text-gray-400 hover:text-rose-600 border border-gray-200 flex items-center justify-center transition-colors cursor-pointer"
+                      title="Xóa cữ này"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Quick buttons cho cả cữ */}
+          <div className="pt-1 flex items-center justify-end gap-2">
+            {!isDone ? (
+              <button
+                type="button"
+                onClick={() => onToggleSession('taken')}
+                className="text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-100/70 hover:bg-emerald-200/80 px-3 py-1.5 rounded-xl border border-emerald-300 active:scale-95 transition-all cursor-pointer flex items-center gap-1"
+              >
+                <Check size={13} strokeWidth={3} />
+                <span>Đánh dấu cả cữ đã uống</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onToggleSession('pending')}
+                className="text-xs font-bold text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-xl border border-gray-200 active:scale-95 transition-all cursor-pointer"
+              >
+                <span>↺ Đặt lại chưa uống cả cữ</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

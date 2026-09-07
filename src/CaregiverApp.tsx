@@ -232,7 +232,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
   }, [linkedPatientId, user?.id]);
 
   return (
-    <div className="w-full flex flex-col min-h-screen relative bg-[#F4F7FB] font-sans">
+    <div className="w-full h-full flex flex-col overflow-hidden relative bg-[#F4F7FB] font-sans">
       
       {/* Fullscreen Siren SOS Alert Modal */}
       <CaregiverSOSAlertModal
@@ -303,7 +303,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
       />
 
       {/* Main Tab View */}
-      <div className="flex-1 overflow-y-auto min-h-0 pb-24">
+      <div className="flex-1 overflow-y-auto min-h-0 pb-6 overscroll-contain">
         {activeTab === "dashboard" && (
           <CaregiverDashboard
             user={user}
@@ -330,8 +330,8 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         {activeTab === "settings" && <CaregiverSettings user={user} onLogout={onLogout} />}
       </div>
 
-      {/* Bottom Navigation */}
-      <div className="absolute bottom-0 w-full bg-white/95 backdrop-blur-sm border-t border-gray-100 px-1 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
+      {/* Bottom Navigation: GHIM CỐ ĐỊNH Ở ĐÁY KHÔNG BAO GIỜ BỊ ĐẨY MẤT */}
+      <div className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-100 px-1 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
         <CaregiverNavItem
           icon={<Home size={22} />}
           label={t("nav.caregiver_home")}

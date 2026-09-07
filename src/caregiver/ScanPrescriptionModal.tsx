@@ -26,6 +26,7 @@ import {
   setGeminiApiKey,
   testGeminiApiKey,
   CLINICAL_FALLBACK_RESULT,
+  cleanMedicineTitle,
   type ParsedMedication
 } from "../utils/geminiVision";
 import { addMedicationWithCourse, saveDiagnosisRecord } from "../services/medicationService";
@@ -79,6 +80,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
   }>({});
   const [medsList, setMedsList] = useState<ParsedMedication[]>([]);
   const [commonStartDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [capturingBlisterIdx, setCapturingBlisterIdx] = useState<number | null>(null);
 
   // Trạng thái xác nhận nếu tên bệnh nhân bị lệch
   const [isMismatchConfirmed, setIsMismatchConfirmed] = useState(false);
@@ -341,10 +343,10 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
             .from('medications')
             .insert({
               patient_id: linkedPatientId,
-              name: med.name.trim(),
+              name: cleanMedicineTitle(med.name.trim()),
               dosage: med.dosage || "1 viên",
               instructions: `[Thuốc dùng khi đau / SOS] ${med.instructions} • Cấp: ${med.total_quantity || 20} viên`,
-              image_url: imageUrl || null
+              image_url: med.custom_photo_url || null
             });
         } else {
           // THUỐC ĐIỀU TRỊ ĐỊNH KỲ (Huyết áp, Vitamin C, Omega-3): Lên lịch đúng số ngày bác sĩ kê
@@ -355,13 +357,13 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
 
           await addMedicationWithCourse({
             patientId: linkedPatientId,
-            name: med.name,
+            name: cleanMedicineTitle(med.name),
             dosage: med.dosage || "1 viên",
             instructions: instructionsText,
             dailyTimes: times,
             startDate: commonStartDate,
             durationDays: duration,
-            imageUrl
+            imageUrl: med.custom_photo_url || null
           });
 
           totalRemindersCreated += times.length * duration;
@@ -841,13 +843,62 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                         </div>
 
                         <div className="text-base font-black text-[#1A2B4B]">
-                          {med.name}
+                          {cleanMedicineTitle(med.name)}
                         </div>
                         {med.generic_name && (
                           <div className="text-xs text-gray-400 font-medium">
                             Hoạt chất: {med.generic_name}
                           </div>
                         )}
+                      </div>
+
+                      {/* MỤC CHỤP ẢNH VỈ THUỐC THỰC TẾ CHO LOẠI THUỐC NÀY */}
+                      <div className="bg-blue-50/50 border border-blue-200/80 rounded-2xl p-3 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-12 h-12 rounded-xl bg-white border border-gray-200 overflow-hidden flex items-center justify-center shrink-0 shadow-2xs">
+                            {med.custom_photo_url ? (
+                              <img src={med.custom_photo_url} alt="Vỉ thuốc" className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-xl">💊</span>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-black text-[#1A2B4B] block truncate">
+                              {med.custom_photo_url ? "✓ Đã có ảnh vỉ thuốc thực tế" : "Chưa có ảnh vỉ thuốc thực tế"}
+                            </span>
+                            <span className="text-[10.5px] text-gray-500 font-medium block truncate">
+                              {med.custom_photo_url ? "Người già sẽ thấy ảnh này khi chuông reo" : "Chụp vỉ thuốc giúp người già dễ nhận biết"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setCapturingBlisterIdx(idx)}
+                            className="inline-flex items-center gap-1 bg-primary hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer shadow-xs"
+                          >
+                            <Camera size={13} />
+                            <span>{med.custom_photo_url ? "Chụp lại" : "Chụp vỉ"}</span>
+                          </button>
+
+                          {med.custom_photo_url && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMedsList(prev => {
+                                  const updated = [...prev];
+                                  updated[idx] = { ...updated[idx], custom_photo_url: undefined };
+                                  return updated;
+                                });
+                              }}
+                              className="w-7 h-7 rounded-xl bg-white hover:bg-red-50 text-gray-400 hover:text-rose-600 border border-gray-200 flex items-center justify-center transition-colors cursor-pointer"
+                              title="Xóa ảnh vỉ này"
+                            >
+                              <X size={13} />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {/* ĐỐI VỚI THUỐC DÙNG KHI ĐAU (PRN - Paracetamol): HIỂN THỊ CHUYÊN BIỆT */}
@@ -1045,6 +1096,57 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
               </div>
             </div>
           </div>
+        )}
+
+        {/* Modal Camera Chụp vỉ/hộp thuốc thực tế cho từng loại thuốc */}
+        {capturingBlisterIdx !== null && (
+          <ElderlyCameraCaptureModal
+            isOpen={capturingBlisterIdx !== null}
+            onClose={() => setCapturingBlisterIdx(null)}
+            title={`Chụp Vỉ Thuốc ${cleanMedicineTitle(medsList[capturingBlisterIdx]?.name || "")}`}
+            subtitle="Chụp vỉ hoặc hộp thuốc thực tế để người già dễ nhận biết khi chuông reo"
+            guideText="ĐẶT VỈ THUỐC HOẶC HỘP THUỐC VÀO CHÍNH GIỮA KHUNG HÌNH"
+            confirmButtonText="LƯU ẢNH VỈ THUỐC NÀY"
+            onCaptureComplete={async (blob, previewUrl) => {
+              const targetIdx = capturingBlisterIdx;
+              try {
+                const fileName = `blister_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+                const { data } = await supabase.storage
+                  .from('medication_images')
+                  .upload(fileName, blob, { upsert: true, contentType: 'image/jpeg' });
+                let finalUrl = previewUrl;
+                if (data) {
+                  const { data: publicUrlData } = supabase.storage
+                    .from('medication_images')
+                    .getPublicUrl(fileName);
+                  finalUrl = publicUrlData.publicUrl;
+                }
+                setMedsList(prev => {
+                  const updated = [...prev];
+                  if (updated[targetIdx]) {
+                    updated[targetIdx] = {
+                      ...updated[targetIdx],
+                      custom_photo_url: finalUrl
+                    };
+                  }
+                  return updated;
+                });
+              } catch (err) {
+                setMedsList(prev => {
+                  const updated = [...prev];
+                  if (updated[targetIdx]) {
+                    updated[targetIdx] = {
+                      ...updated[targetIdx],
+                      custom_photo_url: previewUrl
+                    };
+                  }
+                  return updated;
+                });
+              } finally {
+                setCapturingBlisterIdx(null);
+              }
+            }}
+          />
         )}
 
       </div>

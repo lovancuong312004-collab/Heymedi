@@ -186,7 +186,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
   };
 
   return (
-    <div className="w-full flex flex-col min-h-screen relative bg-[#F4F7FB]">
+    <div className="w-full h-full flex flex-col overflow-hidden relative bg-[#F4F7FB]">
       
       {/* Modal Cuộc gọi đến toàn cục */}
       {incomingCall && (
@@ -218,7 +218,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
       )}
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto pb-24 min-h-0">
+      <div className="flex-1 overflow-y-auto pb-6 min-h-0 overscroll-contain">
         {activeTab === "home" && (
           <HomeScreen 
             user={user} 
@@ -231,8 +231,8 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         {activeTab === "settings" && <SettingsScreen user={user} onLogout={onLogout} />}
       </div>
 
-      {/* Bottom Navigation */}
-      <div className="absolute bottom-0 w-full bg-white/95 backdrop-blur-sm border-t border-gray-100 px-2 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
+      {/* Bottom Navigation: GHIM CỐ ĐỊNH Ở ĐÁY KHÔNG BAO GIỜ BỊ ĐẨY MẤT */}
+      <div className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-100 px-2 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
         <NavItem icon={<Home size={22} />} label={t("nav.home")} isActive={activeTab === "home"} onClick={() => setActiveTab("home")} />
         <NavItem icon={<Pill size={22} />} label={t("nav.meds")} isActive={activeTab === "meds"} onClick={() => setActiveTab("meds")} />
         <NavItem icon={<Users size={22} />} label={t("nav.family")} isActive={activeTab === "family"} onClick={() => setActiveTab("family")} />

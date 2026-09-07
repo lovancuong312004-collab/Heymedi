@@ -6,15 +6,20 @@ import {
   Scan, 
   Loader2, 
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Check, 
   CalendarCheck,
-  Camera
+  Camera,
+  Volume2
 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import { cn } from "./lib/utils";
 import AddMedModal from "./caregiver/AddMedModal";
 import ScanUnknownMedModal from "./screens/ScanUnknownMedModal";
 import ElderlyCameraCaptureModal from "./components/ElderlyCameraCaptureModal";
+import { cleanMedicineTitle } from "./utils/geminiVision";
+import { speakVietnamese } from "./utils/voiceAssistant";
 import { 
   getScheduleByDate, 
   getScheduleDaysSummary, 
@@ -28,13 +33,22 @@ interface Props {
   user: any;
 }
 
+export interface DoseSessionGroup {
+  timeStr: string;
+  mealLabel: string;
+  scheduled_time: string;
+  items: Reminder[];
+  isAllTaken: boolean;
+  takenCount: number;
+}
+
 export default function MedsScreen({ user }: Props) {
   // Ngày được người dùng bấm chọn trên lịch (Mặc định hôm nay)
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [activeTab, setActiveTab] = useState("Tất cả");
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
-  const [photoCaptureMed, setPhotoCaptureMed] = useState<Reminder | null>(null);
+  const [photoCaptureSession, setPhotoCaptureSession] = useState<DoseSessionGroup | null>(null);
   
   const [schedule, setSchedule] = useState<Reminder[]>([]);
   const [daysSummary, setDaysSummary] = useState<Record<string, { count: number; allTaken: boolean; hasPending: boolean }>>({});
@@ -112,6 +126,7 @@ export default function MedsScreen({ user }: Props) {
     setSelectedDate(today);
   };
 
+  // Xác nhận uống một viên thuốc đơn lẻ
   const handleConfirmTaken = async (reminderId: string) => {
     try {
       setMarkingId(reminderId);
@@ -125,12 +140,40 @@ export default function MedsScreen({ user }: Props) {
     }
   };
 
-  const handleCaptureComplete = async (blob: Blob) => {
-    if (!photoCaptureMed) return;
+  // Xác nhận uống toàn bộ cữ thuốc
+  const handleConfirmSessionTaken = async (session: DoseSessionGroup) => {
     try {
-      setMarkingId(photoCaptureMed.id);
-      const uploadedUrl = await uploadPillProofImage(blob, photoCaptureMed.id);
-      await markAsTaken(photoCaptureMed.id, uploadedUrl);
+      const pendingItems = session.items.filter(i => i.status !== 'taken');
+      for (const item of pendingItems) {
+        setMarkingId(item.id);
+        await markAsTaken(item.id);
+      }
+      await loadScheduleForSelectedDate(selectedDate);
+      await loadDaysSummary();
+    } catch (err) {
+      console.error("Failed to mark session taken:", err);
+    } finally {
+      setMarkingId(null);
+    }
+  };
+
+  // Hoàn tất chụp ảnh minh chứng cho cả cữ thuốc
+  const handleCaptureSessionComplete = async (blob: Blob) => {
+    if (!photoCaptureSession) return;
+    try {
+      const pendingItems = photoCaptureSession.items.filter(i => i.status !== 'taken');
+      const targetItems = pendingItems.length > 0 ? pendingItems : photoCaptureSession.items;
+      const firstId = targetItems[0]?.id || "session";
+
+      setMarkingId(firstId);
+      const uploadedUrl = await uploadPillProofImage(blob, firstId);
+
+      for (const item of targetItems) {
+        await markAsTaken(item.id, uploadedUrl);
+      }
+
+      const allNames = targetItems.map(m => cleanMedicineTitle(m.medication?.name || "Thuốc")).join(", ");
+      const allDosages = targetItems.map(m => m.medication?.dosage || "1 liều").join(", ");
 
       // Broadcast sang người chăm sóc
       const nowIso = new Date().toISOString();
@@ -141,11 +184,13 @@ export default function MedsScreen({ user }: Props) {
         payload: {
           patient_id: user?.id,
           patient_name: user?.user_metadata?.full_name || "Bác",
-          reminder_id: photoCaptureMed.id,
-          med_name: photoCaptureMed.medication?.name || "Thuốc",
-          dosage: photoCaptureMed.medication?.dosage || "1 liều",
+          reminder_id: firstId,
+          reminder_ids: targetItems.map(m => m.id),
+          session_time: photoCaptureSession.timeStr,
+          med_name: allNames,
+          dosage: allDosages,
           photo_url: uploadedUrl,
-          scheduled_time: photoCaptureMed.scheduled_time || nowIso,
+          scheduled_time: photoCaptureSession.scheduled_time || nowIso,
           taken_at: nowIso,
           timestamp: nowIso
         }
@@ -153,9 +198,9 @@ export default function MedsScreen({ user }: Props) {
 
       await loadScheduleForSelectedDate(selectedDate);
       await loadDaysSummary();
-      setPhotoCaptureMed(null);
+      setPhotoCaptureSession(null);
     } catch (err) {
-      console.error("Lỗi xác nhận kèm ảnh:", err);
+      console.error("Lỗi xác nhận cữ kèm ảnh:", err);
     } finally {
       setMarkingId(null);
     }
@@ -189,9 +234,39 @@ export default function MedsScreen({ user }: Props) {
     if (hour >= 11 && hour <= 14) period = "Trưa";
     else if (hour > 14 && hour <= 20) period = "Tối";
     else if (hour > 20) period = "Trước ngủ";
-    
     return period === activeTab;
   });
+
+  // Gom nhóm các thuốc cùng giờ thành các Cữ thuốc (Dose Sessions)
+  const doseSessions = useMemo<DoseSessionGroup[]>(() => {
+    const map = new Map<string, Reminder[]>();
+    filteredMeds.forEach(r => {
+      const d = new Date(r.scheduled_time);
+      const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      if (!map.has(timeStr)) {
+        map.set(timeStr, []);
+      }
+      map.get(timeStr)!.push(r);
+    });
+
+    const groups: DoseSessionGroup[] = [];
+    map.forEach((items, timeStr) => {
+      const hourVal = parseInt(timeStr.split(':')[0], 10);
+      const meal = hourVal < 11 ? "Cữ Sáng (Sau ăn)" : hourVal < 15 ? "Cữ Trưa (Sau ăn)" : hourVal < 20 ? "Cữ Tối (Sau ăn)" : "Cữ Trước Ngủ";
+      const takenCount = items.filter(i => i.status === 'taken').length;
+      groups.push({
+        timeStr,
+        mealLabel: meal,
+        scheduled_time: items[0].scheduled_time,
+        items,
+        isAllTaken: takenCount === items.length,
+        takenCount
+      });
+    });
+
+    groups.sort((a, b) => a.timeStr.localeCompare(b.timeStr));
+    return groups;
+  }, [filteredMeds]);
 
   return (
     <>
@@ -217,14 +292,14 @@ export default function MedsScreen({ user }: Props) {
         }} 
       />
 
-      {/* Modal Camera chụp ảnh minh chứng vỉ thuốc cho người già */}
+      {/* Modal Camera chụp ảnh minh chứng cữ thuốc cho người già */}
       <ElderlyCameraCaptureModal 
-        isOpen={!!photoCaptureMed}
-        onClose={() => setPhotoCaptureMed(null)}
-        title="Chụp Ảnh Vỉ Thuốc"
-        subtitle={`Chụp vỉ thuốc ${photoCaptureMed?.medication?.name || "uống"} để gửi cho con`}
-        guideText="ĐẶT VỈ THUỐC HOẶC THUỐC TRÊN TAY VÀO KHUNG"
-        onCaptureComplete={handleCaptureComplete}
+        isOpen={!!photoCaptureSession}
+        onClose={() => setPhotoCaptureSession(null)}
+        title={`Chụp Ảnh Cữ ${photoCaptureSession?.timeStr || ""}`}
+        subtitle={`Chụp các viên thuốc cữ ${photoCaptureSession?.mealLabel || ""} để gửi cho con`}
+        guideText="ĐẶT CÁC VIÊN THUỐC TRÊN TAY HOẶC VỈ THUỐC VÀO KHUNG HÌNH"
+        onCaptureComplete={handleCaptureSessionComplete}
       />
 
       <div className="p-4 sm:p-5 flex flex-col min-h-full bg-[#F4F7FB] pb-28 select-none">
@@ -372,27 +447,28 @@ export default function MedsScreen({ user }: Props) {
             </div>
             
             <span className="text-xs font-bold bg-white text-primary px-3 py-1 rounded-full border border-blue-200 shadow-sm shrink-0">
-              {filteredMeds.length} cữ thuốc
+              {doseSessions.length} cữ ({filteredMeds.length} thuốc)
             </span>
           </div>
 
           {/* Timeline các cữ thuốc trong ngày */}
-          <div className="p-4 sm:p-5 flex flex-col gap-6 relative min-h-[220px]">
+          <div className="p-4 sm:p-5 flex flex-col gap-4 relative min-h-[220px]">
             {loading ? (
               <div className="flex flex-col items-center justify-center h-full py-12 opacity-70">
                 <Loader2 size={36} className="text-primary animate-spin mb-2" />
                 <p className="text-gray-500 font-bold text-sm">Đang tải lịch thuốc ngày này...</p>
               </div>
-            ) : filteredMeds.length > 0 ? (
+            ) : doseSessions.length > 0 ? (
               <div className="space-y-4">
-                {filteredMeds.map((med) => (
-                  <MedItemCard 
-                    key={med.id} 
-                    med={med} 
+                {doseSessions.map((session) => (
+                  <DoseSessionCard 
+                    key={session.timeStr} 
+                    session={session} 
                     isTodaySelected={isToday(selectedDate)}
-                    onConfirmTaken={() => handleConfirmTaken(med.id)}
-                    onTakePhoto={() => setPhotoCaptureMed(med)}
-                    isMarking={markingId === med.id}
+                    onConfirmSessionTaken={() => handleConfirmSessionTaken(session)}
+                    onTakeSessionPhoto={() => setPhotoCaptureSession(session)}
+                    onConfirmSingleMed={(medId) => handleConfirmTaken(medId)}
+                    isMarkingId={markingId}
                   />
                 ))}
               </div>
@@ -434,116 +510,203 @@ export default function MedsScreen({ user }: Props) {
   );
 }
 
-function MedItemCard({ 
-  med, 
-  isTodaySelected, 
-  onConfirmTaken,
-  onTakePhoto,
-  isMarking
-}: { 
-  med: Reminder; 
-  isTodaySelected: boolean; 
-  onConfirmTaken: () => void;
-  onTakePhoto: () => void;
-  isMarking: boolean;
+function DoseSessionCard({
+  session,
+  isTodaySelected,
+  onConfirmSessionTaken,
+  onTakeSessionPhoto,
+  onConfirmSingleMed,
+  isMarkingId
+}: {
+  session: DoseSessionGroup;
+  isTodaySelected: boolean;
+  onConfirmSessionTaken: () => void;
+  onTakeSessionPhoto: () => void;
+  onConfirmSingleMed: (medId: string) => void;
+  isMarkingId: string | null;
 }) {
-  const isDone = med.status === "taken";
-  
-  const d = new Date(med.scheduled_time);
-  const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-  const hour = d.getHours();
-  
-  let periodStr = "Sáng";
-  if (hour >= 11 && hour <= 14) periodStr = "Trưa";
-  else if (hour > 14 && hour <= 20) periodStr = "Tối";
-  else if (hour > 20) periodStr = "Đêm";
+  const [isExpanded, setIsExpanded] = useState(!session.isAllTaken);
+  const isDone = session.isAllTaken;
+
+  const handleSpeakSession = () => {
+    const cleanNames = session.items.map(m => cleanMedicineTitle(m.medication?.name || "Thuốc")).join(", ");
+    speakVietnamese(`Đến ${session.mealLabel} lúc ${session.timeStr}. Cữ này gồm ${session.items.length} loại thuốc: ${cleanNames}. Bác nhớ kiểm tra đủ thuốc rồi uống nhé!`);
+  };
+
+  const handleSpeakPill = (med: Reminder) => {
+    const cleanName = cleanMedicineTitle(med.medication?.name || "Thuốc");
+    speakVietnamese(`Thuốc ${cleanName}, liều lượng ${med.medication?.dosage || "1 liều"}, ${med.medication?.instructions?.split('|')[0]?.trim() || "uống theo đơn"}.`);
+  };
 
   return (
     <div className={cn(
-      "border-2 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition-all",
+      "border-2 rounded-3xl overflow-hidden transition-all shadow-xs",
       isDone 
-        ? "bg-emerald-50/60 border-emerald-200" 
-        : "bg-white border-gray-200 hover:border-blue-300 shadow-sm"
+        ? "bg-emerald-50/40 border-emerald-200" 
+        : "bg-white border-gray-200 hover:border-blue-300"
     )}>
-      <div className="flex items-center gap-3.5 flex-1">
-        
-        {/* Khung giờ & Buổi */}
-        <div className={cn(
-          "w-16 h-16 rounded-2xl flex flex-col items-center justify-center shrink-0 border",
-          isDone 
-            ? "bg-emerald-100/70 border-emerald-300 text-emerald-800" 
-            : "bg-blue-50 border-blue-200 text-primary"
-        )}>
-          <span className="text-base font-black leading-none">{timeStr}</span>
-          <span className="text-[10px] font-bold uppercase mt-1 opacity-80">{periodStr}</span>
+      {/* Header cữ thuốc (Bấm vào để mở rộng / thu gọn) */}
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="p-3.5 sm:p-4 flex items-center justify-between cursor-pointer select-none bg-gradient-to-r from-transparent via-transparent to-gray-50/40"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={cn(
+            "w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black shrink-0 border",
+            isDone 
+              ? "bg-emerald-100/80 border-emerald-300 text-emerald-800" 
+              : "bg-blue-50 border-blue-200 text-primary"
+          )}>
+            <span className="text-base font-black leading-tight">{session.timeStr}</span>
+            <span className="text-[9px] font-bold uppercase opacity-85">
+              {session.timeStr.split(':')[0] < '11' ? 'SÁNG' : session.timeStr.split(':')[0] < '15' ? 'TRƯA' : 'TỐI'}
+            </span>
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <h3 className="text-base font-black text-[#1a2b4b] truncate">{session.mealLabel}</h3>
+              <span className="text-[11px] font-bold bg-blue-100/70 text-blue-800 px-2 py-0.5 rounded-full shrink-0">
+                {session.items.length} loại thuốc
+              </span>
+            </div>
+            
+            {/* Tóm tắt các tên thuốc ngắn gọn */}
+            <p className="text-xs text-gray-600 font-semibold truncate">
+              {session.items.map(m => cleanMedicineTitle(m.medication?.name || "Thuốc")).join(" • ")}
+            </p>
+          </div>
         </div>
 
-        {/* Ảnh thuốc */}
-        <div className="w-14 h-14 rounded-2xl bg-gray-100 border border-gray-200 overflow-hidden shrink-0 flex items-center justify-center">
-          {med.medication?.image_url ? (
-            <img src={med.medication.image_url} alt="Ảnh thuốc" className="w-full h-full object-cover" />
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          {isDone ? (
+            <span className="inline-flex items-center gap-1 text-xs font-black text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-200">
+              <Check size={13} strokeWidth={3} />
+              <span>Đã uống đủ</span>
+            </span>
           ) : (
-            <span className="text-2xl">💊</span>
-          )}
-        </div>
-
-        {/* Tên thuốc & Liều & Lộ trình */}
-        <div className="flex flex-col">
-          <span className="text-[#1a2b4b] font-black text-base sm:text-lg leading-tight">
-            {med.medication?.name || "Thuốc"}
-          </span>
-          <span className="text-primary font-bold text-xs mt-0.5">
-            Liều: {med.medication?.dosage || "1 liều"}
-          </span>
-          {med.medication?.instructions && (
-            <span className="text-gray-600 text-xs mt-0.5 font-medium line-clamp-2">
-              {med.medication.instructions}
+            <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full border border-amber-200">
+              {session.takenCount}/{session.items.length} đã uống
             </span>
           )}
+
+          <div className="text-gray-400 p-1">
+            {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </div>
         </div>
       </div>
 
-      {/* Nút hành động hoặc trạng thái */}
-      <div className="w-full sm:w-auto flex items-center justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100">
-        {isDone ? (
-          <div className="flex flex-col items-end gap-0.5">
-            <div className="flex items-center gap-1.5 text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-full font-black text-xs">
-              <Check size={14} strokeWidth={3} />
-              <span>Đã uống</span>
-            </div>
-            {med.taken_at && (
-              <span className="text-[10px] text-gray-500 font-semibold">
-                Lúc: {new Date(med.taken_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            )}
-          </div>
-        ) : isTodaySelected ? (
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+      {/* Nội dung danh sách thuốc khi mở rộng */}
+      {isExpanded && (
+        <div className="px-3.5 pb-3.5 pt-1 space-y-2.5 border-t border-gray-100 animate-fade-in">
+          
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+              Danh sách thuốc trong cữ:
+            </span>
             <button
-              onClick={onTakePhoto}
-              disabled={isMarking}
-              className="flex-1 sm:flex-initial bg-blue-600 hover:bg-blue-700 text-white font-black text-xs px-3.5 py-2.5 rounded-xl shadow-md shadow-blue-600/20 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border-b-2 border-blue-900"
-              title="Chụp ảnh vỉ thuốc gửi cho người nhà"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSpeakSession();
+              }}
+              className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200 active:scale-95 transition-all cursor-pointer"
             >
-              <Camera size={14} />
-              <span>Uống + Chụp ảnh</span>
+              <Volume2 size={13} />
+              <span>AI đọc cả cữ</span>
             </button>
+          </div>
 
-            <button
-              onClick={onConfirmTaken}
-              disabled={isMarking}
-              className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-3.5 py-2.5 rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border-b-2 border-emerald-900"
-            >
-              {isMarking ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={3} />}
-              <span>Đã uống</span>
-            </button>
+          <div className="space-y-2">
+            {session.items.map((med) => {
+              const medDone = med.status === 'taken';
+              const cleanName = cleanMedicineTitle(med.medication?.name || "Thuốc");
+              const isMarking = isMarkingId === med.id;
+
+              return (
+                <div 
+                  key={med.id}
+                  className={cn(
+                    "p-3 rounded-2xl border flex items-center justify-between gap-2.5 transition-all",
+                    medDone 
+                      ? "bg-emerald-50/70 border-emerald-200 text-emerald-950" 
+                      : "bg-gray-50/80 border-gray-200 text-[#1a2b4b]"
+                  )}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="w-11 h-11 rounded-xl bg-white border border-gray-200 overflow-hidden shrink-0 flex items-center justify-center shadow-2xs">
+                      {med.medication?.image_url ? (
+                        <img src={med.medication.image_url} alt={cleanName} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-xl">💊</span>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="font-black text-sm truncate">{cleanName}</h4>
+                        <button
+                          type="button"
+                          onClick={() => handleSpeakPill(med)}
+                          className="text-primary hover:text-blue-700 p-0.5 active:scale-90 transition-transform cursor-pointer"
+                          title="Bấm để nghe AI đọc"
+                        >
+                          <Volume2 size={14} />
+                        </button>
+                      </div>
+                      <p className="text-xs font-bold text-primary truncate">
+                        {med.medication?.dosage || "1 viên"} 
+                        {med.medication?.instructions && (
+                          <span className="text-gray-500 font-medium"> • {med.medication.instructions.split('|')[0]}</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Nút uống viên đơn lẻ */}
+                  {medDone ? (
+                    <span className="text-emerald-700 bg-white border border-emerald-300 font-black text-[11px] px-2.5 py-1 rounded-xl shrink-0 flex items-center gap-1">
+                      <Check size={12} strokeWidth={3} />
+                      <span>Đã uống</span>
+                    </span>
+                  ) : isTodaySelected ? (
+                    <button
+                      onClick={() => onConfirmSingleMed(med.id)}
+                      disabled={isMarking}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1.5 rounded-xl shadow-xs active:scale-95 transition-all shrink-0 cursor-pointer flex items-center gap-1"
+                    >
+                      {isMarking ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} strokeWidth={3} />}
+                      <span>Uống viên này</span>
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
-        ) : (
-          <span className="text-gray-400 text-xs font-semibold bg-gray-100 px-3 py-1.5 rounded-full">
-            Lịch dự kiến
-          </span>
-        )}
-      </div>
+
+          {/* HÀNG NÚT THAO TÁC CẢ CỮ (NẾU CÒN THUỐC CHƯA UỐNG) */}
+          {!isDone && isTodaySelected && (
+            <div className="pt-2 flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={onTakeSessionPhoto}
+                className="flex-1 bg-[#1C4ED8] hover:bg-blue-700 text-white py-3 px-3 rounded-2xl font-black text-xs shadow-md shadow-blue-700/20 flex items-center justify-center gap-2 active:scale-98 transition-all cursor-pointer border-b-2 border-blue-900"
+              >
+                <Camera size={16} />
+                <span>📸 UỐNG CẢ CỮ + CHỤP ẢNH GỬI CON</span>
+              </button>
+
+              <button
+                onClick={onConfirmSessionTaken}
+                className="flex-1 bg-[#18A048] hover:bg-emerald-700 text-white py-3 px-3 rounded-2xl font-black text-xs shadow-md shadow-emerald-700/20 flex items-center justify-center gap-2 active:scale-98 transition-all cursor-pointer border-b-2 border-emerald-900 uppercase tracking-wide"
+              >
+                <Check size={16} strokeWidth={3} />
+                <span>TÔI ĐÃ UỐNG ĐỦ CỮ NÀY</span>
+              </button>
+            </div>
+          )}
+
+        </div>
+      )}
     </div>
   );
 }

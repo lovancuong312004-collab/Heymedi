@@ -5,6 +5,7 @@ import { getTodaySchedule, getOverdueReminders, markAsTaken, getMedicationTiming
 import { useFamily } from "../contexts/FamilyContext";
 import { supabase } from "../lib/supabase";
 import { cn } from "../lib/utils";
+import { cleanMedicineTitle } from "../utils/geminiVision";
 
 interface Props {
   user: any;
@@ -78,10 +79,13 @@ export default function CaregiverDashboard({
     }
   };
 
-  const handleMarkDone = async (reminderId: string) => {
+  const handleMarkDone = async (reminderIds: string | string[]) => {
     try {
-      setMarkingId(reminderId);
-      await markAsTaken(reminderId);
+      const ids = Array.isArray(reminderIds) ? reminderIds : [reminderIds];
+      setMarkingId(ids[0] || "marking");
+      for (const id of ids) {
+        await markAsTaken(id);
+      }
       await loadData();
     } catch (error) {
       console.error("Failed to mark as done:", error);
@@ -125,9 +129,39 @@ export default function CaregiverDashboard({
   const timeString = `${String(currentDate.getHours()).padStart(2, '0')}:${String(currentDate.getMinutes()).padStart(2, '0')}:${String(currentDate.getSeconds()).padStart(2, '0')}`;
   const lunarString = `(Ngày ${String(lunar.getDay()).padStart(2, '0')} tháng ${String(lunar.getMonth()).padStart(2, '0')} Âm lịch)`;
 
-  const totalCus = schedule.length;
-  const completedCount = schedule.filter(m => m.status === 'taken').length;
-  const overdueCard = overdue.length > 0 ? overdue[0] : null;
+  // Nhóm các cữ thuốc theo khung giờ thực tế trong ngày (Chuẩn y khoa: e.g. 3 cữ/ngày)
+  const uniqueTimeSlots = Array.from(new Set(schedule.map(s => {
+    const d = new Date(s.scheduled_time);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }))).sort();
+
+  const totalCus = uniqueTimeSlots.length;
+  const completedCount = uniqueTimeSlots.filter(time => {
+    const medsInSlot = schedule.filter(s => {
+      const d = new Date(s.scheduled_time);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` === time;
+    });
+    return medsInSlot.length > 0 && medsInSlot.every(s => s.status === 'taken');
+  }).length;
+
+  // Gom các thuốc quá giờ theo khung giờ cữ
+  const overdueTimeSlot = overdue.length > 0 ? (() => {
+    const firstOverdue = overdue[0];
+    const d = new Date(firstOverdue.scheduled_time);
+    const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const medsInSlot = overdue.filter(o => {
+      const od = new Date(o.scheduled_time);
+      return `${String(od.getHours()).padStart(2, '0')}:${String(od.getMinutes()).padStart(2, '0')}` === timeStr;
+    });
+    return {
+      timeStr,
+      scheduled_time: firstOverdue.scheduled_time,
+      count: medsInSlot.length,
+      meds: medsInSlot,
+      reminderIds: medsInSlot.map(m => m.id),
+      photoUrl: medsInSlot.find(m => m.medication?.image_url)?.medication?.image_url
+    };
+  })() : null;
 
   return (
     <div className="p-5 flex flex-col gap-4 pb-24">
@@ -187,8 +221,8 @@ export default function CaregiverDashboard({
         </div>
       </div>
 
-      {/* 3. Hero Card: Thuốc cần nhắc nhở gấp (Quá giờ) */}
-      {overdueCard && (
+      {/* 3. Hero Card: Thuốc cần nhắc nhở gấp (Quá giờ theo cữ) */}
+      {overdueTimeSlot && (
         <div className="flex flex-col">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-4 h-4 rounded-full border-2 border-danger flex items-center justify-center text-danger">
@@ -197,47 +231,47 @@ export default function CaregiverDashboard({
             <h3 className="text-[#1a2b4b] font-bold text-base">Cảnh báo thuốc quá giờ</h3>
           </div>
 
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-red-100 flex flex-col relative overflow-hidden min-h-[220px]">
-            <div className="pr-24 relative z-10">
-              <p className="text-danger font-bold mb-1.5 text-sm flex items-start gap-1.5">
-                <AlertCircle size={18} className="shrink-0 mt-0.5" />
+          <div className="bg-white rounded-3xl p-5 shadow-sm border border-red-100 flex flex-col relative overflow-hidden min-h-[200px]">
+            <div className="pr-20 relative z-10">
+              <p className="text-danger font-bold mb-1 text-sm flex items-start gap-1.5">
+                <AlertCircle size={17} className="shrink-0 mt-0.5" />
                 <span className="leading-tight">
-                  {new Date(overdueCard.scheduled_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} • Quá giờ chưa uống!
+                  {overdueTimeSlot.timeStr} • Quá giờ chưa uống ({overdueTimeSlot.count} loại thuốc)!
                 </span>
               </p>
-              <h2 className="text-[#1a2b4b] font-black text-[28px] mb-2 leading-tight">
-                {overdueCard.medication?.name || "Thuốc không tên"}
+              <h2 className="text-[#1a2b4b] font-black text-xl sm:text-2xl mb-1.5 leading-tight">
+                {overdueTimeSlot.meds.map(m => cleanMedicineTitle(m.medication?.name || "Thuốc")).join(" • ")}
               </h2>
-              <p className="text-gray-700 text-sm font-medium leading-snug">
-                {overdueCard.medication?.dosage} • {overdueCard.medication?.instructions}
+              <p className="text-gray-600 text-xs font-semibold leading-snug">
+                {overdueTimeSlot.meds.map(m => `${cleanMedicineTitle(m.medication?.name || "Thuốc")}: ${m.medication?.dosage}`).join(", ")}
               </p>
             </div>
 
-            <div className="absolute right-[-12px] top-6 z-0">
-              <div className="w-[104px] h-[104px] bg-gray-50 rounded-full shadow-md flex items-center justify-center border-[4px] border-white overflow-hidden">
-                {overdueCard.medication?.image_url ? (
-                  <img src={overdueCard.medication.image_url} alt="Ảnh thuốc" className="w-full h-full object-cover" />
+            <div className="absolute right-[-10px] top-4 z-0">
+              <div className="w-20 h-20 bg-blue-50 rounded-2xl shadow-sm flex items-center justify-center border-2 border-white overflow-hidden">
+                {overdueTimeSlot.photoUrl ? (
+                  <img src={overdueTimeSlot.photoUrl} alt="Ảnh thuốc" className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-3xl">💊</span>
                 )}
               </div>
             </div>
 
-            <div className="mt-auto pt-6 flex gap-2">
+            <div className="mt-auto pt-4 flex gap-2">
               <button
                 onClick={onOpenCall}
-                className="flex-1 bg-danger text-white py-4 rounded-2xl font-bold text-lg shadow-[0_4px_14px_rgba(220,38,38,0.3)] transition-transform active:scale-95 flex items-center justify-center gap-2"
+                className="flex-1 bg-danger text-white py-3 px-4 rounded-2xl font-bold text-base shadow-[0_4px_14px_rgba(220,38,38,0.3)] transition-transform active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
               >
-                <Phone size={20} className="fill-white" />
+                <Phone size={18} className="fill-white" />
                 GỌI NHẮC
               </button>
               <button
-                onClick={() => handleMarkDone(overdueCard.id)}
-                disabled={markingId === overdueCard.id}
-                className="px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl font-bold text-sm active:scale-95 transition-all disabled:opacity-50"
-                title="Đánh dấu là đã uống hộ"
+                onClick={() => handleMarkDone(overdueTimeSlot.reminderIds)}
+                disabled={markingId !== null}
+                className="px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl font-bold text-xs active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                title="Đánh dấu đã uống cả cữ"
               >
-                {markingId === overdueCard.id ? <Loader2 size={16} className="animate-spin" /> : "Đã uống"}
+                {markingId !== null ? <Loader2 size={16} className="animate-spin" /> : "Đã uống cả cữ"}
               </button>
             </div>
           </div>

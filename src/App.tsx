@@ -44,8 +44,8 @@ export default function App() {
   return (
     <SettingsProvider>
       <FamilyProvider>
-        <div className="flex justify-center bg-gray-300 min-h-screen">
-          <div className="w-full max-w-md bg-[#F4F7FB] min-h-screen relative flex flex-col font-sans overflow-hidden shadow-2xl">
+        <div className="flex justify-center bg-gray-900 h-[100dvh] max-h-[100dvh] overflow-hidden">
+          <div className="w-full max-w-md bg-[#F4F7FB] h-full max-h-[100dvh] relative flex flex-col font-sans overflow-hidden shadow-2xl">
             {route === "splash"    && <SplashScreen   onDone={() => navigate("login")} />}
             {route === "login"     && <LoginScreen    onLogin={(role) => navigate(role === "elderly" ? "elderly" : "caregiver")} onRegister={() => navigate("register")} />}
             {route === "register"  && <RegisterScreen onDone={(role) => navigate(role === "elderly" ? "elderly" : "caregiver")} onBack={() => navigate("login")} />}

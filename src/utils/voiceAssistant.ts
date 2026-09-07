@@ -197,9 +197,19 @@ function fallbackToSpeechSynthesis(text: string, voiceId: string, speed: number,
 
 export const announceMedication = (medName: string, dosage: string, options?: SpeakOptions) => {
   playAlarmTone();
+  const cleanName = medName.split('(')[0].trim() || medName;
   setTimeout(() => {
-    speakVietnamese(`Đã đến giờ uống thuốc ${medName}, liều lượng ${dosage}. Ông bà uống thuốc sau ăn nhé!`, options);
+    speakVietnamese(`Đã đến giờ uống thuốc ${cleanName}, liều lượng ${dosage}. Bác nhớ uống thuốc nhé!`, options);
   }, 800); // Speak after beep
+};
+
+export const announceDoseSession = (sessionTime: string, count: number, medNames: string[], options?: SpeakOptions) => {
+  playAlarmTone();
+  const cleanList = medNames.map(n => n.split('(')[0].trim()).filter(Boolean);
+  const text = `Đã đến cữ thuốc lúc ${sessionTime}. Cữ này gồm ${count} loại thuốc: ${cleanList.join(", ")}. Bác kiểm tra đủ thuốc rồi uống nhé!`;
+  setTimeout(() => {
+    speakVietnamese(text, options);
+  }, 800);
 };
 
 export const unlockAudio = () => {
@@ -326,13 +336,15 @@ export const startRingtone = () => {
  */
 export const announceDailyBriefing = (params: {
   patientName: string;
-  hour: number;
-  minute: number;
+  hour?: number;
+  minute?: number;
   solarDate: string;
   lunarDate: string;
   schedule: Array<{ status: string; scheduled_time: string; medication?: { name: string } }>;
 }) => {
-  const { patientName, hour, minute, solarDate, lunarDate, schedule } = params;
+  const hour = params.hour ?? new Date().getHours();
+  const minute = params.minute ?? new Date().getMinutes();
+  const { patientName, solarDate, lunarDate, schedule } = params;
 
   let greeting = "Chào buổi sáng";
   if (hour >= 11 && hour < 14) greeting = "Chào buổi trưa";

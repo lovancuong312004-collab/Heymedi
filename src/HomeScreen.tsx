@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { Calendar, Volume2, Scan, AlertCircle, Loader2, Clock, CheckCircle2 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import SOSModal from "./screens/SOSModal";
-import MedicationAlertScreen from "./screens/MedicationAlertScreen";
+import MedicationAlertScreen, { type DoseSessionAlert } from "./screens/MedicationAlertScreen";
 import ScanUnknownMedModal from "./screens/ScanUnknownMedModal";
 import { getTodaySchedule, markAsTaken, type Reminder } from "./services/medicationService";
-import { announceMedication, announceDailyBriefing } from "./utils/voiceAssistant";
+import { announceDoseSession, announceDailyBriefing } from "./utils/voiceAssistant";
+import { cleanMedicineTitle } from "./utils/geminiVision";
 import { supabase } from "./lib/supabase";
 
 interface Props {
@@ -33,8 +34,8 @@ export default function HomeScreen({
   const [loading, setLoading] = useState(true);
   const [takingId, setTakingId] = useState<string | null>(null);
 
-  // Alarm and audio state
-  const [alertMed, setAlertMed] = useState<Reminder | null>(null);
+  // Trạng thái báo thức theo Cữ thuốc (Dose Session)
+  const [alertSession, setAlertSession] = useState<DoseSessionAlert | null>(null);
   const [snoozedMap, setSnoozedMap] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -76,7 +77,7 @@ export default function HomeScreen({
       setCurrentDate(now);
 
       // Kiểm tra xem có cữ thuốc nào đến hạn hoặc quá giờ mà chưa uống không
-      if (isAudioUnlocked && schedule.length > 0 && !alertMed) {
+      if (isAudioUnlocked && schedule.length > 0 && !alertSession) {
         const dueMed = schedule.find(r => {
           if (r.status !== 'pending') return false;
           const schedTime = new Date(r.scheduled_time).getTime();
@@ -89,48 +90,58 @@ export default function HomeScreen({
         });
 
         if (dueMed) {
-          setAlertMed(dueMed);
-          announceMedication(
-            dueMed.medication?.name || "Thuốc",
-            dueMed.medication?.dosage || "1 liều"
+          const dueTimeStr = new Date(dueMed.scheduled_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+          const dueSlotReminders = schedule.filter(r => {
+            if (r.status !== 'pending') return false;
+            const timeStr = new Date(r.scheduled_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+            return timeStr === dueTimeStr;
+          });
+
+          const hourVal = new Date(dueMed.scheduled_time).getHours();
+          const meal = hourVal < 11 ? "Cữ Sáng (Sau ăn)" : hourVal < 15 ? "Cữ Trưa (Sau ăn)" : hourVal < 20 ? "Cữ Tối (Sau ăn)" : "Cữ Trước Ngủ";
+
+          const session: DoseSessionAlert = {
+            time: dueTimeStr,
+            mealLabel: meal,
+            scheduled_time: dueMed.scheduled_time,
+            medicines: dueSlotReminders.map(r => ({
+              id: r.id,
+              name: cleanMedicineTitle(r.medication?.name || "Thuốc"),
+              dosage: r.medication?.dosage || "1 viên",
+              instruction: r.medication?.instructions || "Uống theo đơn",
+              imageUrl: r.medication?.image_url,
+              scheduled_time: r.scheduled_time,
+              time: dueTimeStr
+            }))
+          };
+
+          setAlertSession(session);
+          announceDoseSession(
+            session.time,
+            session.medicines.length,
+            session.medicines.map(m => m.name)
           );
         }
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [schedule, isAudioUnlocked, alertMed, snoozedMap]);
+  }, [schedule, isAudioUnlocked, alertSession, snoozedMap]);
 
-  const handleTakeMedication = async (reminderId: string, photoUrl?: string) => {
+  const handleTakeDoseSession = async (photoUrl?: string, reminderIds?: string[]) => {
     try {
-      setTakingId(reminderId);
-      await markAsTaken(reminderId, photoUrl);
+      const idsToMark = reminderIds && reminderIds.length > 0 
+        ? reminderIds 
+        : alertSession ? alertSession.medicines.map(m => m.id) : [];
 
-      const targetMed = schedule.find(s => s.id === reminderId) || alertMed;
-      const nowIso = new Date().toISOString();
-
-      if (photoUrl) {
-        // Broadcast xác nhận kèm ảnh đối chiếu thuốc cho người nhà
-        const channel = supabase.channel('sos-emergency-alerts');
-        channel.send({
-          type: 'broadcast',
-          event: 'PILL_TAKEN_PROOF',
-          payload: {
-            patient_id: patientId,
-            patient_name: patientDisplayName,
-            reminder_id: reminderId,
-            med_name: targetMed?.medication?.name || "Thuốc",
-            dosage: targetMed?.medication?.dosage || "1 liều",
-            photo_url: photoUrl,
-            scheduled_time: targetMed?.scheduled_time || nowIso,
-            taken_at: nowIso,
-            timestamp: nowIso
-          }
-        }).catch(() => {});
+      for (const id of idsToMark) {
+        setTakingId(id);
+        await markAsTaken(id, photoUrl);
       }
+
       await loadSchedule();
-      setAlertMed(null);
+      setAlertSession(null);
     } catch (error) {
-      console.error("Failed to mark as taken:", error);
+      console.error("Failed to take dose session:", error);
       alert("Có lỗi xảy ra, vui lòng thử lại!");
     } finally {
       setTakingId(null);
@@ -138,13 +149,16 @@ export default function HomeScreen({
   };
 
   const handleSnooze = () => {
-    if (alertMed) {
-      // Hoãn báo lại sau 5 phút
-      setSnoozedMap(prev => ({
-        ...prev,
-        [alertMed.id]: Date.now() + 5 * 60 * 1000
-      }));
-      setAlertMed(null);
+    if (alertSession) {
+      const snoozeUntil = Date.now() + 5 * 60 * 1000;
+      setSnoozedMap(prev => {
+        const next = { ...prev };
+        alertSession.medicines.forEach(m => {
+          next[m.id] = snoozeUntil;
+        });
+        return next;
+      });
+      setAlertSession(null);
     }
   };
 
@@ -166,6 +180,25 @@ export default function HomeScreen({
   const overdueReminders = (schedule || []).filter(r => 
     r?.status === 'pending' && new Date(r.scheduled_time).getTime() <= nowTime
   );
+
+  // Nhóm các thuốc quá giờ theo từng cữ (khung giờ)
+  const overdueSlots = Array.from(new Set(
+    overdueReminders.map(r => {
+      const d = new Date(r.scheduled_time);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    })
+  )).map(timeStr => {
+    const medsInSlot = overdueReminders.filter(r => {
+      const d = new Date(r.scheduled_time);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` === timeStr;
+    });
+    return {
+      timeStr,
+      scheduled_time: medsInSlot[0]?.scheduled_time,
+      meds: medsInSlot,
+      reminderIds: medsInSlot.map(m => m.id)
+    };
+  });
 
   const upcomingReminders = (schedule || []).filter(r => 
     r?.status === 'pending' && new Date(r.scheduled_time).getTime() > nowTime
@@ -191,19 +224,12 @@ export default function HomeScreen({
         onAddedMed={loadSchedule}
       />
 
-      {alertMed && (
+      {alertSession && (
         <MedicationAlertScreen
-          medicine={{
-            id: alertMed.id,
-            name: alertMed.medication?.name || "Thuốc",
-            dosage: alertMed.medication?.dosage || "1 liều",
-            instruction: alertMed.medication?.instructions || "Theo chỉ dẫn",
-            time: new Date(alertMed.scheduled_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-            scheduled_time: alertMed.scheduled_time
-          }}
+          session={alertSession}
           patientName={patientDisplayName}
           verificationMode={verificationMode}
-          onTaken={(photoUrl?: string) => handleTakeMedication(alertMed.id, photoUrl)}
+          onTaken={(photoUrl?: string, reminderIds?: string[]) => handleTakeDoseSession(photoUrl, reminderIds)}
           onSnooze={handleSnooze}
         />
       )}
@@ -233,16 +259,16 @@ export default function HomeScreen({
             <div>
               <h2 className="text-[#1a2b4b] font-bold text-2xl mb-0.5">{timeString}</h2>
               <p className="text-[#1a2b4b] font-semibold text-sm">{dateString}</p>
-              <p className="text-gray-500 text-xs mt-0.5">{lunarString}</p>
+              <p className="text-gray-500 text-xs mt-0.5 font-medium">{lunarString}</p>
             </div>
           </div>
           <button 
             onClick={() => {
               announceDailyBriefing({
-                patientName: rawName ? rawName.replace(/^bác\s+/i, '') : "Bác",
+                patientName: patientDisplayName,
                 hour: currentDate.getHours(),
                 minute: currentDate.getMinutes(),
-                solarDate: `${dayOfWeek}, ngày ${currentDate.getDate()} tháng ${currentDate.getMonth() + 1}`,
+                solarDate: dateString,
                 lunarDate: `ngày ${String(lunar.getDay()).padStart(2, '0')} tháng ${String(lunar.getMonth()).padStart(2, '0')} Âm lịch`,
                 schedule
               });
@@ -254,44 +280,61 @@ export default function HomeScreen({
           </button>
         </div>
 
-        {/* 1. MỤC CẢNH BÁO: CÁC THUỐC QUÁ GIỜ CHƯA UỐNG */}
-        {overdueReminders.length > 0 && (
+        {/* 1. MỤC CẢNH BÁO: CÁC CỮ THUỐC QUÁ GIỜ CHƯA UỐNG */}
+        {overdueSlots.length > 0 && (
           <div className="bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-200 rounded-3xl p-4 shadow-sm flex flex-col gap-2.5 animate-fade-in">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping inline-block" />
                 <span className="text-red-700 font-black text-xs uppercase tracking-wider">
-                  ⚠️ Quá giờ chưa uống ({overdueReminders.length} cữ)
+                  ⚠️ Quá giờ chưa uống ({overdueSlots.length} cữ)
                 </span>
               </div>
               <span className="text-red-600 font-bold text-xs bg-red-100/90 px-2 py-0.5 rounded-full">
-                Trễ {Math.max(1, Math.floor((nowTime - new Date(overdueReminders[0].scheduled_time).getTime()) / 60000))} phút
+                Trễ {Math.max(1, Math.floor((nowTime - new Date(overdueSlots[0].scheduled_time || nowTime).getTime()) / 60000))} phút
               </span>
             </div>
 
             <div className="flex flex-col gap-2">
-              {overdueReminders.map((med) => (
-                <div key={med.id} className="bg-white rounded-2xl p-3 border border-red-100 flex items-center justify-between shadow-xs">
+              {overdueSlots.map((slot) => (
+                <div key={slot.timeStr} className="bg-white rounded-2xl p-3 border border-red-100 flex items-center justify-between shadow-xs">
                   <div className="min-w-0 pr-2">
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <span className="text-red-600 font-black text-sm shrink-0">
-                        {new Date(med.scheduled_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                        {slot.timeStr}
                       </span>
                       <span className="text-gray-300">•</span>
-                      <h4 className="text-[#1a2b4b] font-black text-sm truncate">{med.medication?.name || "Thuốc"}</h4>
+                      <span className="text-[11px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full">
+                        {slot.meds.length} loại thuốc
+                      </span>
                     </div>
-                    <p className="text-gray-600 text-xs font-medium truncate">
-                      {med.medication?.dosage} • {med.medication?.instructions}
+                    <p className="text-gray-700 text-xs font-bold truncate">
+                      {slot.meds.map(m => cleanMedicineTitle(m.medication?.name || "Thuốc")).join(", ")}
                     </p>
                   </div>
 
                   <button
-                    onClick={() => handleTakeMedication(med.id)}
-                    disabled={takingId === med.id}
+                    onClick={() => {
+                      const hourVal = parseInt(slot.timeStr.split(':')[0], 10);
+                      const meal = hourVal < 11 ? "Cữ Sáng (Sau ăn)" : hourVal < 15 ? "Cữ Trưa (Sau ăn)" : hourVal < 20 ? "Cữ Tối (Sau ăn)" : "Cữ Trước Ngủ";
+                      setAlertSession({
+                        time: slot.timeStr,
+                        mealLabel: meal,
+                        scheduled_time: slot.scheduled_time,
+                        medicines: slot.meds.map(r => ({
+                          id: r.id,
+                          name: cleanMedicineTitle(r.medication?.name || "Thuốc"),
+                          dosage: r.medication?.dosage || "1 viên",
+                          instruction: r.medication?.instructions || "Uống theo đơn",
+                          imageUrl: r.medication?.image_url,
+                          scheduled_time: r.scheduled_time,
+                          time: slot.timeStr
+                        }))
+                      });
+                    }}
                     className="px-3.5 py-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-xl font-bold text-xs shadow-md shadow-red-600/20 transition-all shrink-0 flex items-center gap-1 cursor-pointer"
                   >
-                    {takingId === med.id ? <Loader2 size={13} className="animate-spin" /> : null}
-                    <span>UỐNG NGAY</span>
+                    <span>UỐNG CỮ NÀY</span>
                   </button>
                 </div>
               ))}
@@ -326,7 +369,7 @@ export default function HomeScreen({
                   </span>
                 </p>
                 <h2 className="text-[#1a2b4b] font-black text-2xl mb-1 w-[68%] leading-tight truncate">
-                  {nextReminder.medication?.name || "Thuốc không tên"}
+                  {cleanMedicineTitle(nextReminder.medication?.name || "Thuốc không tên")}
                 </h2>
                 <p className="text-gray-600 text-sm font-medium w-[68%] leading-snug line-clamp-2">
                   {nextReminder.medication?.dosage} • {nextReminder.medication?.instructions}
@@ -344,7 +387,7 @@ export default function HomeScreen({
 
                 <div className="mt-auto pt-5">
                   <button 
-                    onClick={() => handleTakeMedication(nextReminder.id)}
+                    onClick={() => handleTakeDoseSession(undefined, [nextReminder.id])}
                     disabled={takingId === nextReminder.id}
                     className="w-full bg-primary hover:bg-blue-700 text-white py-3.5 rounded-2xl font-bold text-base shadow-md shadow-blue-500/20 active:scale-[0.98] transition-all tracking-wide disabled:opacity-70 flex items-center justify-center gap-2 cursor-pointer"
                   >
