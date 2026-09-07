@@ -4,7 +4,7 @@ import { Lunar } from "lunar-javascript";
 import SOSModal from "./screens/SOSModal";
 import MedicationAlertScreen from "./screens/MedicationAlertScreen";
 import { getTodaySchedule, markAsTaken, type Reminder } from "./services/medicationService";
-import { announceMedication } from "./utils/voiceAssistant";
+import { announceMedication, announceDailyBriefing } from "./utils/voiceAssistant";
 import { supabase } from "./lib/supabase";
 
 interface Props {
@@ -14,7 +14,8 @@ interface Props {
 }
 
 export default function HomeScreen({ user, onLogout: _onLogout, isAudioUnlocked = true }: Props) {
-  const userName = user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "Bác");
+  const rawName = user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "");
+  const patientDisplayName = rawName ? (rawName.toLowerCase().startsWith("bác ") ? rawName : `Bác ${rawName}`) : "Bác";
   const patientId = user?.id;
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -86,10 +87,25 @@ export default function HomeScreen({ user, onLogout: _onLogout, isAudioUnlocked 
     return () => clearInterval(timer);
   }, [schedule, isAudioUnlocked, alertMed]);
 
-  const handleTakeMedication = async (reminderId: string) => {
+  const handleTakeMedication = async (reminderId: string, photoUrl?: string) => {
     try {
       setTakingId(reminderId);
       await markAsTaken(reminderId);
+      if (photoUrl) {
+        // Also broadcast proof of taken pill to caregiver
+        const channel = supabase.channel('sos-emergency-alerts');
+        channel.send({
+          type: 'broadcast',
+          event: 'PILL_TAKEN_PROOF',
+          payload: {
+            patient_id: patientId,
+            patient_name: patientDisplayName,
+            reminder_id: reminderId,
+            photo_url: photoUrl,
+            timestamp: new Date().toISOString()
+          }
+        }).catch(() => {});
+      }
       await loadSchedule();
       setAlertMed(null);
     } catch (error) {
@@ -106,6 +122,12 @@ export default function HomeScreen({ user, onLogout: _onLogout, isAudioUnlocked 
   const timeString = `${String(currentDate.getHours()).padStart(2, '0')}:${String(currentDate.getMinutes()).padStart(2, '0')}:${String(currentDate.getSeconds()).padStart(2, '0')}`;
   const lunarString = `(Ngày ${String(lunar.getDay()).padStart(2, '0')} tháng ${String(lunar.getMonth()).padStart(2, '0')} Âm lịch)`;
 
+  const currentHour = currentDate.getHours();
+  let greetingTime = "Chào buổi sáng";
+  if (currentHour >= 11 && currentHour < 14) greetingTime = "Chào buổi trưa";
+  else if (currentHour >= 14 && currentHour < 18) greetingTime = "Chào buổi chiều";
+  else if (currentHour >= 18 || currentHour < 5) greetingTime = "Chào buổi tối";
+
   const nextReminder = (schedule || []).find(r => r?.status === 'pending');
 
   return (
@@ -115,7 +137,7 @@ export default function HomeScreen({ user, onLogout: _onLogout, isAudioUnlocked 
         onClose={() => setIsSOSOpen(false)} 
         contactName="Người thân" 
         patientId={patientId}
-        patientName={userName}
+        patientName={patientDisplayName}
       />
 
       {alertMed && (
@@ -126,7 +148,7 @@ export default function HomeScreen({ user, onLogout: _onLogout, isAudioUnlocked 
             instruction: alertMed.medication?.instructions || "Theo chỉ dẫn",
             time: new Date(alertMed.scheduled_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
           }}
-          onTaken={() => handleTakeMedication(alertMed.id)}
+          onTaken={(photoUrl?: string) => handleTakeMedication(alertMed.id, photoUrl)}
           onSnooze={() => setAlertMed(null)}
         />
       )}
@@ -138,12 +160,12 @@ export default function HomeScreen({ user, onLogout: _onLogout, isAudioUnlocked 
             {user?.user_metadata?.avatar_url ? (
               <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
-              <span>{(userName || "B")[0].toUpperCase()}</span>
+              <span>{(patientDisplayName.replace(/^bác\s+/i, '') || "B")[0].toUpperCase()}</span>
             )}
           </div>
           <div>
-            <p className="text-gray-500 text-xs font-medium">Chào buổi sáng,</p>
-            <h1 className="text-lg font-bold text-[#1a2b4b]">{userName} 👋</h1>
+            <p className="text-gray-500 text-xs font-medium">{greetingTime},</p>
+            <h1 className="text-lg font-bold text-[#1a2b4b]">{patientDisplayName} 👋</h1>
           </div>
         </div>
 
@@ -161,11 +183,17 @@ export default function HomeScreen({ user, onLogout: _onLogout, isAudioUnlocked 
           </div>
           <button 
             onClick={() => {
-              if (nextReminder) {
-                announceMedication(nextReminder.medication?.name || "Thuốc", nextReminder.medication?.dosage || "");
-              }
+              announceDailyBriefing({
+                patientName: rawName ? rawName.replace(/^bác\s+/i, '') : "Bác",
+                hour: currentDate.getHours(),
+                minute: currentDate.getMinutes(),
+                solarDate: `${dayOfWeek}, ngày ${currentDate.getDate()} tháng ${currentDate.getMonth() + 1}`,
+                lunarDate: `ngày ${String(lunar.getDay()).padStart(2, '0')} tháng ${String(lunar.getMonth()).padStart(2, '0')} Âm lịch`,
+                schedule
+              });
             }}
-            className="w-12 h-12 rounded-full bg-[#EBF1FF] flex items-center justify-center shrink-0 active:scale-95 transition-all"
+            className="w-12 h-12 rounded-full bg-[#EBF1FF] text-primary flex items-center justify-center shrink-0 active:scale-90 hover:bg-blue-100 transition-all cursor-pointer shadow-sm"
+            title="Nghe thông báo ngày & lịch thuốc hôm nay"
           >
             <Volume2 size={24} className="text-primary" strokeWidth={2.5} />
           </button>

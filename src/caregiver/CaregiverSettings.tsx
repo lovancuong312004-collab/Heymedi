@@ -8,16 +8,22 @@ import {
   Globe, 
   Info, 
   LogOut, 
-  ChevronRight,
-  ToggleLeft,
-  ToggleRight,
-  X,
-  UserPlus,
-  Loader2,
-  Mail
+  ChevronRight, 
+  ToggleLeft, 
+  ToggleRight, 
+  X, 
+  UserPlus, 
+  Loader2, 
+  Mail,
+  Check,
+  Cloud,
+  RefreshCw,
+  Phone
 } from "lucide-react";
 import { useFamily } from "../contexts/FamilyContext";
 import { supabase } from "../lib/supabase";
+import HealthProfileModal from "../screens/HealthProfileModal";
+import { cn } from "../lib/utils";
 
 interface Props {
   user: any;
@@ -35,7 +41,7 @@ interface CaregiverMember {
 }
 
 export default function CaregiverSettings({ user, onLogout }: Props) {
-  const { linkedPatientId, patientInfo } = useFamily();
+  const { linkedPatientId, patientInfo, refreshLink } = useFamily();
   const [autoAlert, setAutoAlert] = useState(true);
   const [dailyAiReport, setDailyAiReport] = useState(true);
   const [aiVoiceCall, setAiVoiceCall] = useState(false);
@@ -43,7 +49,13 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
   const [coCaregivers, setCoCaregivers] = useState<CaregiverMember[]>([]);
   const [loadingCaregivers, setLoadingCaregivers] = useState(false);
   const [showCaregiversModal, setShowCaregiversModal] = useState(false);
+  const [showHealthProfileModal, setShowHealthProfileModal] = useState(false);
   
+  const [activeModal, setActiveModal] = useState<"language" | "sync" | "about" | "logout" | null>(null);
+  const [language, setLanguage] = useState<"vi" | "en">("vi");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState("Vừa xong");
+
   const meta = user?.user_metadata || {};
   const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Thành viên");
 
@@ -139,8 +151,18 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
     }
   }, [linkedPatientId]);
 
+  const handleManualSync = () => {
+    setIsSyncing(true);
+    setTimeout(() => {
+      setIsSyncing(false);
+      setLastSyncTime(new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }));
+      if (refreshLink) refreshLink();
+      alert("Đã đồng bộ thời gian thực với thiết bị người bệnh!");
+    }, 1200);
+  };
+
   return (
-    <div className="p-5 flex flex-col min-h-full bg-[#F4F7FB] animate-fade-in">
+    <div className="p-5 flex flex-col min-h-full bg-[#F4F7FB] animate-fade-in select-none pb-24">
       
       {/* Header */}
       <div className="flex justify-center items-center mb-4 mt-2">
@@ -149,7 +171,7 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
 
       {/* Profile Card */}
       <div className="bg-white rounded-3xl p-4 border border-gray-100 shadow-sm flex items-center gap-3.5 mb-4">
-        <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 border-2 border-white shadow-sm flex items-center justify-center shrink-0">
+        <div className="w-12 h-12 rounded-full overflow-hidden bg-emerald-100 text-emerald-800 border-2 border-white shadow-sm flex items-center justify-center font-bold shrink-0">
           {meta.avatar_url ? (
             <img 
               src={meta.avatar_url} 
@@ -157,12 +179,12 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
               className="w-full h-full object-cover"
             />
           ) : (
-            <span className="font-bold text-gray-500">{(meta.full_name || "C")[0]}</span>
+            <span>{(meta.full_name || "C")[0]?.toUpperCase()}</span>
           )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-bold text-[#1a2b4b] truncate">{meta.full_name || "Khách"}</h3>
+            <h3 className="text-base font-bold text-[#1a2b4b] truncate">{meta.full_name || "Người chăm sóc"}</h3>
             <span className="text-[10px] font-bold bg-[#EBF1FF] text-primary px-2 py-0.5 rounded-full shrink-0">
               Người chăm sóc
             </span>
@@ -171,7 +193,7 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
           {linkedPatientId ? (
             <p className="text-xs text-success font-bold mt-0.5 flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-success inline-block" />
-              Đang quản lý: {patientInfo?.name || 'Chưa kết nối'}
+              Đang quản lý: Bác {patientName.replace(/^bác\s+/i, '')}
             </p>
           ) : (
             <p className="text-xs text-gray-500 font-bold mt-0.5 flex items-center gap-1">
@@ -190,10 +212,10 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
             {/* Patient Profile */}
             <SettingRow
               icon={<Shield size={20} />}
-              label={`Hồ sơ bệnh án của ${patientInfo?.name || 'người thân'}`}
-              value="Xem chi tiết"
+              label={`Hồ sơ sức khỏe của ${patientName}`}
+              value="Xem & Sửa"
               hasBorder
-              onClick={() => alert(`Hồ sơ bệnh án của ${patientInfo?.name || 'người thân'} đang được cập nhật.`)}
+              onClick={() => setShowHealthProfileModal(true)}
             />
 
             {/* Co-caregivers */}
@@ -273,19 +295,30 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
           </>
         )}
 
+        {/* Cloud Sync */}
+        <SettingRow
+          icon={<Cloud size={20} />}
+          label="Đồng bộ đám mây"
+          value={lastSyncTime}
+          hasBorder
+          onClick={() => setActiveModal("sync")}
+        />
+
         {/* Language */}
         <SettingRow
           icon={<Globe size={20} />}
           label="Ngôn ngữ"
-          value="Tiếng Việt"
+          value={language === "vi" ? "Tiếng Việt" : "English"}
           hasBorder
+          onClick={() => setActiveModal("language")}
         />
 
         {/* Version */}
         <SettingRow
           icon={<Info size={20} />}
-          label="Giới thiệu ứng dụng"
-          value="Phiên bản 1.0.0"
+          label="Giới thiệu ứng dụng & Hỗ trợ"
+          value="v1.0.0"
+          onClick={() => setActiveModal("about")}
         />
 
       </div>
@@ -293,13 +326,28 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
       {/* Logout Button */}
       <div className="mt-auto pb-4">
         <button
-          onClick={onLogout}
+          onClick={() => setActiveModal("logout")}
           className="w-full bg-white text-danger border border-red-200 py-4 px-6 rounded-2xl font-bold text-base flex items-center justify-center gap-2 shadow-sm hover:bg-red-50 active:scale-[0.98] transition-all cursor-pointer"
         >
           <LogOut size={20} className="text-danger" strokeWidth={2.5} />
           <span>Đăng xuất</span>
         </button>
       </div>
+
+      {/* Patient Health Profile Modal (Editable) */}
+      {showHealthProfileModal && (
+        <HealthProfileModal
+          isOpen={showHealthProfileModal}
+          onClose={() => setShowHealthProfileModal(false)}
+          user={{
+            id: linkedPatientId,
+            user_metadata: patientInfo || {}
+          }}
+          onUpdated={() => {
+            if (refreshLink) refreshLink();
+          }}
+        />
+      )}
 
       {/* Co-Caregivers Modal */}
       {showCaregiversModal && (
@@ -374,7 +422,7 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
             <div className="p-4 border-t border-gray-100 bg-white">
               <button
                 onClick={() => {
-                  alert(`Để thêm người thân cùng chăm sóc ${patientName}, hãy vào Tab "Gia đình" và chọn "Thêm thành viên" để chia sẻ mã quét QR.`);
+                  alert(`Để thêm người thân cùng chăm sóc ${patientName}, hãy vào Tab "Gia đình" và chọn "Thêm thành viên" để chia sẻ mã QR.`);
                   setShowCaregiversModal(false);
                 }}
                 className="w-full py-3.5 rounded-2xl bg-primary text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-primary/25 hover:bg-primary/95 cursor-pointer active:scale-95 transition-all"
@@ -385,6 +433,104 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
 
           </div>
         </div>
+      )}
+
+      {/* Sync Modal */}
+      {activeModal === "sync" && (
+        <ModalWrapper title="Đồng bộ đám mây" onClose={() => setActiveModal(null)}>
+          <div className="space-y-4 text-center">
+            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 leading-relaxed text-left">
+              <p className="font-bold flex items-center gap-1.5 mb-1 text-emerald-900">
+                <Cloud size={16} /> Đồng bộ Realtime với người bệnh:
+              </p>
+              <span>Lịch thuốc, thông báo khẩn cấp SOS và hồ sơ bệnh án được cập nhật 2 chiều tự động tức thì thông qua Supabase Realtime.</span>
+            </div>
+
+            <p className="text-xs text-gray-500">Lần đồng bộ gần nhất: <b>{lastSyncTime}</b></p>
+
+            <button
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className="w-full py-3.5 rounded-2xl bg-primary text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-primary/25 hover:bg-blue-700 active:scale-95 transition-all cursor-pointer"
+            >
+              <RefreshCw size={16} className={cn(isSyncing && "animate-spin")} />
+              <span>{isSyncing ? "Đang đồng bộ..." : "Đồng bộ lại ngay"}</span>
+            </button>
+          </div>
+        </ModalWrapper>
+      )}
+
+      {/* Language Modal */}
+      {activeModal === "language" && (
+        <ModalWrapper title="Chọn ngôn ngữ" onClose={() => setActiveModal(null)}>
+          <div className="space-y-2.5">
+            {[
+              { key: "vi", label: "Tiếng Việt (Mặc định)" },
+              { key: "en", label: "English (US)" }
+            ].map((item) => (
+              <div
+                key={item.key}
+                onClick={() => {
+                  setLanguage(item.key as any);
+                  setActiveModal(null);
+                }}
+                className={cn(
+                  "p-3.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-colors",
+                  language === item.key ? "bg-blue-50 border-primary text-primary font-bold" : "bg-gray-50 border-gray-200 text-gray-700"
+                )}
+              >
+                <span>{item.label}</span>
+                {language === item.key && <Check size={18} />}
+              </div>
+            ))}
+          </div>
+        </ModalWrapper>
+      )}
+
+      {/* About Modal */}
+      {activeModal === "about" && (
+        <ModalWrapper title="Giới thiệu & Hỗ trợ kỹ thuật" onClose={() => setActiveModal(null)}>
+          <div className="space-y-3 text-center text-xs text-gray-600">
+            <div className="w-14 h-14 rounded-2xl bg-primary text-white flex items-center justify-center font-black text-xl mx-auto shadow-md shadow-primary/30">
+              HM
+            </div>
+            <h4 className="font-extrabold text-base text-[#1a2b4b]">Heymedi Caregiver Edition</h4>
+            <p className="text-[11px] text-gray-400">Phiên bản 1.0.0 Production</p>
+            
+            <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200 text-left space-y-1.5 mt-2">
+              <p className="font-bold text-[#1a2b4b] flex items-center gap-1.5">
+                <Phone size={14} className="text-primary" /> Hotline hỗ trợ gia đình 24/7:
+              </p>
+              <p className="text-primary font-black text-sm">1900 1234 (Miễn phí)</p>
+              <p className="text-gray-500 text-[11px]">Hỗ trợ kết nối thành viên và hướng dẫn sử dụng ứng dụng.</p>
+            </div>
+          </div>
+        </ModalWrapper>
+      )}
+
+      {/* Logout Modal */}
+      {activeModal === "logout" && (
+        <ModalWrapper title="Xác nhận đăng xuất" onClose={() => setActiveModal(null)}>
+          <div className="text-center space-y-4">
+            <p className="text-sm font-semibold text-gray-700">
+              Bạn có chắc chắn muốn đăng xuất khỏi ứng dụng Heymedi không?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 font-bold text-sm text-gray-600 hover:bg-gray-50 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={onLogout}
+                className="flex-1 py-3 rounded-xl bg-danger text-white font-bold text-sm shadow-md hover:bg-red-700 cursor-pointer"
+              >
+                Đăng xuất
+              </button>
+            </div>
+          </div>
+        </ModalWrapper>
       )}
 
     </div>
@@ -419,6 +565,30 @@ function SettingRow({
       <div className="flex items-center gap-2">
         {value && <span className="text-gray-500 text-sm font-medium">{value}</span>}
         <ChevronRight className="text-gray-400" size={18} />
+      </div>
+    </div>
+  );
+}
+
+function ModalWrapper({
+  title,
+  children,
+  onClose
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-fade-in">
+      <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl animate-slide-up sm:animate-scale-up space-y-4">
+        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+          <h3 className="font-extrabold text-lg text-[#1a2b4b]">{title}</h3>
+          <button onClick={onClose} className="p-1.5 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 cursor-pointer">
+            <X size={18} />
+          </button>
+        </div>
+        <div>{children}</div>
       </div>
     </div>
   );

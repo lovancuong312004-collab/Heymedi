@@ -246,6 +246,25 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                   </div>
                 </div>
               ))}
+
+              {/* Add another medication button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMedsList(prev => [
+                    ...prev,
+                    {
+                      name: "",
+                      dosage: "1 viên",
+                      time: "Sáng",
+                      instructions: "Uống sau ăn"
+                    }
+                  ]);
+                }}
+                className="w-full py-3 rounded-2xl border-2 border-dashed border-primary/40 text-primary font-bold text-sm flex items-center justify-center gap-1.5 hover:bg-blue-50/50 transition-colors"
+              >
+                + Thêm loại thuốc khác
+              </button>
             </div>
           )}
         </div>

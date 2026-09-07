@@ -26,22 +26,27 @@ export default function ElderlyApp({ user, onLogout }: Props) {
     window.addEventListener("click", handleFirstInteraction, { once: true });
     window.addEventListener("touchstart", handleFirstInteraction, { once: true });
 
-    // 2. Automatically request Location (GPS) & Microphone permission for emergency SOS
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        () => console.log("GPS Location permission granted"),
-        (err) => console.warn("GPS Location permission:", err.message),
-        { enableHighAccuracy: true, timeout: 5000 }
-      );
-    }
+    // 2. Request Location (GPS) & Microphone permission only once on first onboarding
+    const permissionsAlreadyRequested = localStorage.getItem("heymedi_permissions_requested");
+    if (!permissionsAlreadyRequested) {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          () => console.log("GPS Location permission granted"),
+          (err) => console.warn("GPS Location permission:", err.message),
+          { enableHighAccuracy: true, timeout: 5000 }
+        );
+      }
 
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then((stream) => {
-          console.log("Microphone permission granted");
-          stream.getTracks().forEach((track) => track.stop());
-        })
-        .catch((err) => console.warn("Microphone permission:", err.message));
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then((stream) => {
+            console.log("Microphone permission granted");
+            stream.getTracks().forEach((track) => track.stop());
+          })
+          .catch((err) => console.warn("Microphone permission:", err.message));
+      }
+
+      localStorage.setItem("heymedi_permissions_requested", "true");
     }
 
     return () => {

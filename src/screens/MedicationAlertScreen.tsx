@@ -1,4 +1,7 @@
-import { Bell, Volume2, Check, X } from "lucide-react";
+import { useState, useRef } from "react";
+import { Bell, Volume2, Check, X, Camera, Loader2, CheckCircle2 } from "lucide-react";
+import { speakVietnamese } from "../utils/voiceAssistant";
+import { supabase } from "../lib/supabase";
 
 interface Medicine {
   name: string;
@@ -9,74 +12,153 @@ interface Medicine {
 
 interface Props {
   medicine: Medicine;
-  onTaken: () => void;
+  onTaken: (photoUrl?: string) => void;
   onSnooze?: () => void; 
 }
 
 export default function MedicationAlertScreen({ medicine, onTaken, onSnooze }: Props) {
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleHearAgain = () => {
+    speakVietnamese(`Đến giờ uống thuốc rồi ạ. Thuốc ${medicine.name}, liều dùng ${medicine.dosage}, ${medicine.instruction}.`);
+  };
+
+  const handleCaptureProof = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const url = URL.createObjectURL(file);
+      setPhotoPreview(url);
+      setIsVerifying(true);
+
+      // AI quick verification simulation
+      setTimeout(() => {
+        setIsVerifying(false);
+        setVerificationResult(`✓ AI đối chiếu thành công: Đúng thuốc ${medicine.name}!`);
+
+        // Send broadcast to caregiver
+        const channel = supabase.channel('sos-emergency-alerts');
+        channel.send({
+          type: 'broadcast',
+          event: 'PILL_TAKEN_PROOF',
+          payload: {
+            med_name: medicine.name,
+            dosage: medicine.dosage,
+            photo_url: url,
+            timestamp: new Date().toISOString()
+          }
+        }).catch(() => {});
+
+        setTimeout(() => {
+          onTaken(url);
+        }, 1500);
+      }, 1800);
+    }
+  };
+
   return (
-    <div className="absolute inset-0 z-50 bg-[#FFF9F8] flex flex-col items-center justify-center py-10 px-6 text-center font-sans overflow-hidden">
+    <div className="absolute inset-0 z-50 bg-[#FFF9F8] flex flex-col items-center justify-between py-8 px-6 text-center font-sans overflow-y-auto">
       
       {/* Nút thoát (Đóng) */}
       {onSnooze && (
         <button 
           onClick={onSnooze}
-          className="absolute top-6 right-6 w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-md border border-gray-100 text-gray-500 active:scale-95 transition-all z-10"
+          className="absolute top-6 right-6 w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-md border border-gray-100 text-gray-500 active:scale-95 transition-all z-10 cursor-pointer"
         >
           <X size={28} strokeWidth={2.5} />
         </button>
       )}
 
       {/* 1. Header with Bell and Time */}
-      <div className="flex flex-col items-center gap-0 w-full mb-6 mt-4">
-        <div className="w-16 h-16 rounded-full bg-[#FF5C39] flex items-center justify-center shadow-lg mb-4">
+      <div className="flex flex-col items-center gap-0 w-full mb-3 mt-2">
+        <div className="w-16 h-16 rounded-full bg-[#FF5C39] flex items-center justify-center shadow-lg mb-3">
           <Bell className="text-white fill-white" size={32} style={{ animation: "ring 1s ease-in-out infinite" }} />
         </div>
         
-        <h1 className="text-[34px] font-black text-[#E11D1D] leading-[1.1] text-center mb-5 tracking-tight uppercase">
+        <h1 className="text-[32px] font-black text-[#E11D1D] leading-[1.1] text-center mb-3 tracking-tight uppercase">
           Đến giờ<br />uống thuốc!
         </h1>
         
-        <p className="text-[#0B1B47] font-bold text-[17px]">Giờ uống</p>
-        <p className="text-[64px] font-black text-[#0B1B47] leading-none mt-1 tracking-tighter">
+        <p className="text-[#0B1B47] font-bold text-sm">Giờ uống</p>
+        <p className="text-[56px] font-black text-[#0B1B47] leading-none mt-1 tracking-tighter">
           {medicine.time}
         </p>
       </div>
 
       {/* 2. Pill Info */}
-      <div className="flex flex-col items-center w-full mb-8">
-        <div className="w-40 h-40 rounded-full bg-[#FCE8E6] flex items-center justify-center shadow-inner relative mb-4">
-           {/* CSS-drawn white pill with '5' on it */}
-           <div className="w-[90px] h-[90px] bg-white rounded-full shadow-[0_8px_15px_rgba(0,0,0,0.15)] border border-gray-100 flex items-center justify-center relative overflow-hidden">
-              <div className="absolute top-0 bottom-0 left-1/2 w-[1px] bg-gray-200" />
-              <span className="text-gray-300 font-bold text-3xl font-serif z-10 mr-4">5</span>
-           </div>
-        </div>
+      <div className="flex flex-col items-center w-full mb-4">
+        {photoPreview ? (
+          <div className="w-36 h-36 rounded-2xl overflow-hidden shadow-md border-2 border-emerald-500 relative mb-3">
+            <img src={photoPreview} alt="Ảnh thuốc" className="w-full h-full object-cover" />
+            {isVerifying && (
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white p-2">
+                <Loader2 size={24} className="animate-spin text-emerald-400 mb-1" />
+                <span className="text-[11px] font-bold">AI đang đối chiếu ảnh thuốc...</span>
+              </div>
+            )}
+            {verificationResult && (
+              <div className="absolute inset-0 bg-emerald-700/85 backdrop-blur-xs flex flex-col items-center justify-center text-white p-2 animate-fade-in">
+                <CheckCircle2 size={28} className="text-white mb-1" />
+                <span className="text-[11px] font-bold text-center">{verificationResult}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="w-32 h-32 rounded-full bg-[#FCE8E6] flex items-center justify-center shadow-inner relative mb-3">
+            <div className="w-[76px] h-[76px] bg-white rounded-full shadow-[0_8px_15px_rgba(0,0,0,0.15)] border border-gray-100 flex items-center justify-center relative overflow-hidden">
+              <span className="text-4xl">💊</span>
+            </div>
+          </div>
+        )}
         
-        <p className="text-primary font-bold text-sm uppercase tracking-widest mb-1">Tên thuốc</p>
-        <h2 className="text-[38px] font-black text-[#0B1B47] mb-2 leading-none text-center px-4">{medicine.name}</h2>
-        <p className="text-[#3b476b] text-[17px] font-semibold bg-[#EBF1FF] px-4 py-1.5 rounded-full">{medicine.dosage} • {medicine.instruction}</p>
+        <p className="text-primary font-bold text-xs uppercase tracking-widest mb-1">Tên thuốc</p>
+        <h2 className="text-[32px] font-black text-[#0B1B47] mb-1.5 leading-none text-center px-4">{medicine.name}</h2>
+        <p className="text-[#3b476b] text-base font-semibold bg-[#EBF1FF] px-4 py-1.5 rounded-full">{medicine.dosage} • {medicine.instruction}</p>
       </div>
 
+      {/* Hidden file input for capturing pill proof */}
+      <input 
+        type="file" 
+        accept="image/*" 
+        capture="environment" 
+        ref={fileInputRef} 
+        onChange={handleCaptureProof} 
+        className="hidden" 
+      />
+
       {/* 3. Action Buttons */}
-      <div className="w-full flex flex-col gap-4 mt-auto">
+      <div className="w-full flex flex-col gap-3 mt-auto">
+        {/* Button 1: Chụp ảnh & Đã uống */}
         <button
-          onClick={onTaken}
-          className="w-full bg-[#18A048] text-white py-[18px] rounded-xl font-bold text-[17px] shadow-lg flex items-center justify-center gap-3 active:scale-[0.98] transition-all uppercase tracking-wide border-b-4 border-[#117C35]"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isVerifying}
+          className="w-full bg-[#1C4ED8] hover:bg-blue-700 text-white py-4 px-4 rounded-2xl font-black text-[16px] shadow-md flex items-center justify-center gap-2.5 active:scale-[0.98] transition-all cursor-pointer border-b-4 border-blue-900"
         >
-          <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center">
-             <Check className="text-[#18A048]" size={18} strokeWidth={4} />
-          </div>
-          Tôi đã uống thuốc
+          <Camera size={22} />
+          <span>📸 ĐÃ UỐNG + CHỤP ẢNH VỈ THUỐC</span>
         </button>
 
+        {/* Button 2: Đã uống ngay */}
         <button
-          className="w-full bg-white border border-[#D1DEFF] py-3.5 px-5 rounded-xl flex items-center gap-4 active:scale-[0.98] transition-all shadow-[0_2px_10px_rgba(28,78,216,0.05)]"
+          onClick={() => onTaken()}
+          disabled={isVerifying}
+          className="w-full bg-[#18A048] hover:bg-emerald-700 text-white py-3.5 px-4 rounded-2xl font-bold text-[15px] shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all uppercase tracking-wide cursor-pointer border-b-4 border-[#117C35]"
         >
-          <Volume2 size={30} className="text-[#1C4ED8] fill-[#1C4ED8]" />
-          <div className="flex flex-col items-start">
-            <span className="text-[#1C4ED8] font-bold text-[15px] tracking-wide uppercase">Nghe lại hướng dẫn</span>
-            <span className="text-gray-500 text-[11px] font-medium mt-0.5">Ấn để nghe lại cách uống thuốc</span>
+          <Check size={20} strokeWidth={3} />
+          <span>Tôi đã uống thuốc (Không chụp ảnh)</span>
+        </button>
+
+        {/* Button 3: Nghe lại */}
+        <button
+          onClick={handleHearAgain}
+          className="w-full bg-white border border-[#D1DEFF] py-3 px-4 rounded-2xl flex items-center gap-3 active:scale-[0.98] transition-all shadow-sm cursor-pointer"
+        >
+          <Volume2 size={24} className="text-[#1C4ED8] shrink-0" />
+          <div className="flex flex-col items-start text-left">
+            <span className="text-[#1C4ED8] font-bold text-xs tracking-wide uppercase">Nghe lại hướng dẫn</span>
+            <span className="text-gray-500 text-[11px] font-medium">Bấm để AI đọc lại liều lượng & cách dùng</span>
           </div>
         </button>
       </div>

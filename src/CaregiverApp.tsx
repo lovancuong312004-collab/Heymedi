@@ -48,17 +48,30 @@ function CaregiverAppContent({ user, onLogout }: Props) {
   const [isAddMedOpen, setIsAddMedOpen] = useState(false);
   const [sosAlert, setSosAlert] = useState<SOSAlertPayload | null>(null);
 
-  // Global Emergency SOS Listener
+  // Global Emergency SOS & Medication Proof Listener
   useEffect(() => {
-    const channel = supabase.channel('sos-alerts-listener')
+    const channel = supabase.channel('sos-emergency-alerts')
       .on('broadcast', { event: 'EMERGENCY' }, (event) => {
         console.log("Global Caregiver received SOS Broadcast:", event);
         const payload = event.payload as SOSAlertPayload;
         if (payload) {
-          // If we have a linked patient, check ID; if not linked yet, also show alert for demo
           if (!linkedPatientId || payload.patient_id === linkedPatientId) {
             setSosAlert(payload);
           }
+        }
+      })
+      .on('broadcast', { event: 'UNKNOWN_MED_TAKEN' }, (event) => {
+        console.log("Caregiver received UNKNOWN_MED_TAKEN:", event);
+        const p = event.payload;
+        if (p && (!linkedPatientId || p.patient_id === linkedPatientId)) {
+          alert(`🔔 THÔNG BÁO TỪ NGƯỜI BỆNH:\n${p.patient_name || patientName} vừa quét và tự uống thuốc: "${p.med_name}".\nMức độ an toàn: ${p.safety_level === 'safe' ? 'An toàn' : p.safety_level === 'warning' ? 'Cần cẩn trọng' : 'Nguy hiểm'}`);
+        }
+      })
+      .on('broadcast', { event: 'PILL_TAKEN_PROOF' }, (event) => {
+        console.log("Caregiver received PILL_TAKEN_PROOF:", event);
+        const p = event.payload;
+        if (p && (!linkedPatientId || p.patient_id === linkedPatientId)) {
+          alert(`📸 XÁC NHẬN TỪ NGƯỜI BỆNH:\n${p.patient_name || patientName} đã uống thuốc và gửi ảnh chụp đối chiếu vỉ thuốc thành công!`);
         }
       })
       .subscribe();

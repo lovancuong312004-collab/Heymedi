@@ -79,10 +79,9 @@ export default function SOSModal({
       setGpsCoords({ lat, lng });
     }
 
-    // 2. Broadcast EMERGENCY over Supabase channel 'sos-alerts'
+    // 2. Broadcast EMERGENCY over Supabase channel 'sos-emergency-alerts'
     try {
-      const channel = supabase.channel('sos-alerts');
-      await channel.subscribe();
+      const channel = supabase.channel('sos-emergency-alerts');
       
       const payload = {
         patient_id: patientId || "patient_unknown",
@@ -93,13 +92,25 @@ export default function SOSModal({
         timestamp: new Date().toISOString()
       };
 
-      await channel.send({
+      channel.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.send({
+            type: 'broadcast',
+            event: 'EMERGENCY',
+            payload
+          });
+          console.log("SOS Broadcast sent on SUBSCRIBED:", payload);
+        }
+      });
+
+      // Backup immediate send
+      channel.send({
         type: 'broadcast',
         event: 'EMERGENCY',
         payload
-      });
+      }).catch(() => {});
 
-      console.log("SOS Broadcast EMERGENCY sent successfully:", payload);
+      console.log("SOS Broadcast EMERGENCY triggered successfully:", payload);
     } catch (e) {
       console.error("SOS Broadcast failed:", e);
     } finally {

@@ -3,7 +3,7 @@ import { Plus, Calendar, CheckCircle2, Clock, Scan, Loader2 } from "lucide-react
 import { Lunar } from "lunar-javascript";
 import { cn } from "./lib/utils";
 import AddMedModal from "./caregiver/AddMedModal";
-import ScanAIModal from "./caregiver/ScanAIModal";
+import ScanUnknownMedModal from "./screens/ScanUnknownMedModal";
 import { getTodaySchedule, type Reminder } from "./services/medicationService";
 import { supabase } from "./lib/supabase";
 
@@ -80,10 +80,15 @@ export default function MedsScreen({ user }: Props) {
         setIsAddOpen(false);
         loadSchedule();
       }} />
-      <ScanAIModal isOpen={isScanOpen} onClose={() => setIsScanOpen(false)} onAddMedSuccess={() => {
-        setIsScanOpen(false);
-        loadSchedule();
-      }} />
+      <ScanUnknownMedModal 
+        isOpen={isScanOpen} 
+        onClose={() => setIsScanOpen(false)} 
+        user={user}
+        currentSchedule={schedule}
+        onAddedMed={() => {
+          loadSchedule();
+        }} 
+      />
 
       <div className="p-5 flex flex-col min-h-full bg-[#F4F7FB]">
         <div className="flex justify-between items-center mb-4 relative mt-2">
@@ -152,13 +157,13 @@ export default function MedsScreen({ user }: Props) {
         <div className="mt-auto pt-2 pb-2">
           <button 
             onClick={() => setIsScanOpen(true)}
-            className="w-full bg-[#EBF1FF] rounded-2xl p-5 flex flex-col items-center justify-center border border-[#D1E0FF] cursor-pointer active:scale-95 transition-transform gap-1"
+            className="w-full bg-[#EBF1FF] rounded-2xl p-5 flex flex-col items-center justify-center border border-[#D1E0FF] shadow-sm cursor-pointer active:scale-95 transition-transform gap-1"
           >
             <div className="flex items-center gap-2 text-primary">
               <Scan size={28} strokeWidth={2.5} />
-              <span className="font-extrabold text-xl">QUÉT THUỐC (AI)</span>
+              <span className="font-extrabold text-xl">QUÉT THUỐC NGOÀI ĐƠN (AI)</span>
             </div>
-            <span className="text-[#1a2b4b]/80 text-sm font-semibold mt-1">Quét hộp thuốc để thêm nhanh</span>
+            <span className="text-[#1a2b4b]/80 text-sm font-semibold mt-1">Chụp 2-3 ảnh để AI kiểm tra tương tác thuốc & bệnh nền</span>
           </button>
         </div>
       </div>

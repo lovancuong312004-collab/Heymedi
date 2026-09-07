@@ -123,3 +123,47 @@ export const startSirenAlarm = () => {
     return () => {};
   }
 };
+
+/**
+ * Phát thanh tổng quan lịch trình buổi sáng / ngày cho người cao tuổi
+ */
+export const announceDailyBriefing = (params: {
+  patientName: string;
+  hour: number;
+  minute: number;
+  solarDate: string;
+  lunarDate: string;
+  schedule: Array<{ status: string; scheduled_time: string; medication?: { name: string } }>;
+}) => {
+  const { patientName, hour, minute, solarDate, lunarDate, schedule } = params;
+
+  let greeting = "Chào buổi sáng";
+  if (hour >= 11 && hour < 14) greeting = "Chào buổi trưa";
+  else if (hour >= 14 && hour < 18) greeting = "Chào buổi chiều";
+  else if (hour >= 18 || hour < 5) greeting = "Chào buổi tối";
+
+  const total = schedule.length;
+  const taken = schedule.filter(r => r.status === 'taken').length;
+  const pending = schedule.filter(r => r.status === 'pending');
+
+  let medText = "";
+  if (total === 0) {
+    medText = "Hôm nay Bác chưa có lịch uống thuốc nào được cài đặt.";
+  } else if (pending.length === 0) {
+    medText = `Bác đã uống đủ toàn bộ ${total} cữ thuốc hôm nay rồi ạ. Rất đáng khen ngợi!`;
+  } else {
+    const nextMed = pending[0];
+    const nextHour = new Date(nextMed.scheduled_time).getHours();
+    const nextMin = new Date(nextMed.scheduled_time).getMinutes();
+    const nextName = nextMed.medication?.name || "thuốc";
+    medText = `Hôm nay Bác có tổng cộng ${total} cữ thuốc. Bác đã uống ${taken} cữ, còn ${pending.length} cữ chưa uống. Cữ tiếp theo lúc ${nextHour} giờ ${nextMin > 0 ? nextMin + ' phút' : ''} là thuốc ${nextName}.`;
+  }
+
+  const fullText = `${greeting} Bác ${patientName}! Bây giờ là ${hour} giờ ${minute} phút, ${solarDate}, tức ${lunarDate}. ${medText} Chúc Bác một ngày thật nhiều niềm vui và dồi dào sức khỏe!`;
+
+  playAlarmTone();
+  setTimeout(() => {
+    speakVietnamese(fullText);
+  }, 500);
+};
+
