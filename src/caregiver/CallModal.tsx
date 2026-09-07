@@ -6,10 +6,10 @@ import {
   Volume2, 
   VolumeX, 
   Sparkles, 
-  MessageSquare,
-  Video,
-  VideoOff,
-  SwitchCamera
+  MessageSquare, 
+  Video, 
+  VideoOff, 
+  SwitchCamera 
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { cn } from "../lib/utils";
@@ -27,19 +27,31 @@ interface Props {
   isSOS?: boolean;
   initialVideo?: boolean;
   callId?: string;
-  isInitiator?: boolean; // true: Người bắt đầu gọi, false: Người nhận cuộc gọi
+  isInitiator?: boolean; // true: Người gọi đi, false: Người nhận cuộc gọi
   // Legacy aliases
   patientName?: string;
   patientPhone?: string;
   reminderNote?: string;
 }
 
+// Cấu hình STUN + TURN OpenRelay đảm bảo WebRTC xuyên NAT, 4G, 5G và Wi-Fi
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-  ]
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp'
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
+  ],
+  iceCandidatePoolSize: 10
 };
 
 export default function CallModal({
@@ -68,7 +80,7 @@ export default function CallModal({
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [callDuration, setCallDuration] = useState(0);
   
-  // Real Media Controls
+  // Real Hardware Media Controls
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(true);
   const [isVideo, setIsVideo] = useState(initialVideo);
@@ -80,17 +92,28 @@ export default function CallModal({
   const [remoteIsMuted, setRemoteIsMuted] = useState(false);
   const [aiVoiceActive, setAiVoiceActive] = useState(false);
 
-  // WebRTC & Media Refs
+  // WebRTC & Media Element Refs
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
-  const webrtcChannelRef = useRef<any>(null);
-  const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
+  const sessionChannelRef = useRef<any>(null);
+  const globalChannelRef = useRef<any>(null);
   const iceCandidatesQueueRef = useRef<RTCIceCandidateInit[]>([]);
+  const offerSyncIntervalRef = useRef<any>(null);
+  const answerSyncIntervalRef = useRef<any>(null);
+  const ringIntervalRef = useRef<any>(null);
+  const callTimeoutRef = useRef<any>(null);
 
-  // Dừng toàn bộ Media Stream và đóng PeerConnection
+  // Dọn dẹp media và giải phóng tài nguyên
   const cleanupMedia = () => {
+    if (offerSyncIntervalRef.current) clearInterval(offerSyncIntervalRef.current);
+    if (answerSyncIntervalRef.current) clearInterval(answerSyncIntervalRef.current);
+    if (ringIntervalRef.current) clearInterval(ringIntervalRef.current);
+    if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
+
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
@@ -101,17 +124,24 @@ export default function CallModal({
     }
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    if (webrtcChannelRef.current) {
-      supabase.removeChannel(webrtcChannelRef.current);
-      webrtcChannelRef.current = null;
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+    remoteStreamRef.current = null;
+
+    if (sessionChannelRef.current) {
+      supabase.removeChannel(sessionChannelRef.current);
+      sessionChannelRef.current = null;
     }
-    pendingOfferRef.current = null;
+    if (globalChannelRef.current) {
+      supabase.removeChannel(globalChannelRef.current);
+      globalChannelRef.current = null;
+    }
+
     iceCandidatesQueueRef.current = [];
     setHasRemoteStream(false);
   };
 
   // Khởi động Camera và Micro thực tế
-  const getLocalMedia = async (mode: "user" | "environment" = facingMode) => {
+  const getLocalMedia = async (mode: "user" | "environment" = facingMode, wantVideo: boolean = isVideo) => {
     try {
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(t => t.stop());
@@ -120,11 +150,11 @@ export default function CallModal({
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: isVideo ? { facingMode: mode } : false,
+          video: wantVideo ? { facingMode: mode } : false,
           audio: true
         });
       } catch (vidErr) {
-        console.warn("Could not get video track, fallback to audio only:", vidErr);
+        console.warn("[Media] Video unavailable, fallback to audio only:", vidErr);
         stream = await navigator.mediaDevices.getUserMedia({
           video: false,
           audio: true
@@ -137,186 +167,47 @@ export default function CallModal({
         localVideoRef.current.srcObject = stream;
       }
       return stream;
-    } catch (e) {
-      console.warn("No camera/microphone found or access denied:", e);
+    } catch (err) {
+      console.warn("[Media] Could not access media devices:", err);
       return null;
     }
   };
 
-  // Tạo và gửi SDP Offer (Caller)
-  const createAndSendOffer = async (pc: RTCPeerConnection, channel: any) => {
+  // Gửi SDP Offer định kỳ cho đến khi có Answer
+  const createAndBroadcastOffer = async (pc: RTCPeerConnection, channel: any, currentId: string) => {
     try {
-      if (pc.signalingState !== 'stable') return;
-      const offer = await pc.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: true
-      });
-      await pc.setLocalDescription(offer);
-      channel.send({
-        type: 'broadcast',
-        event: 'WEBRTC_OFFER',
-        payload: { sdp: offer }
-      }).catch((e: any) => console.warn("Failed to send offer:", e));
-      console.log("WebRTC Offer sent successfully");
-    } catch (e) {
-      console.error("Error creating WebRTC offer:", e);
-    }
-  };
-
-  // Xử lý khi nhận được Remote Offer (Callee)
-  const handleRemoteOffer = async (sdp: RTCSessionDescriptionInit, pc: RTCPeerConnection, channel: any) => {
-    try {
-      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-      console.log("WebRTC Remote Description set from Offer");
-
-      // Xả toàn bộ ICE candidates đang chờ
-      while (iceCandidatesQueueRef.current.length > 0) {
-        const cand = iceCandidatesQueueRef.current.shift();
-        if (cand) {
-          await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
-        }
-      }
-
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      channel.send({
-        type: 'broadcast',
-        event: 'WEBRTC_ANSWER',
-        payload: { sdp: answer }
-      }).catch((e: any) => console.warn("Failed to send answer:", e));
-      console.log("WebRTC Answer sent successfully");
-    } catch (e) {
-      console.error("Error handling remote offer:", e);
-    }
-  };
-
-  // Khởi tạo phiên WebRTC chuyên dụng cho cuộc gọi
-  const initWebRTCSession = async (currentId: string, asCaller: boolean) => {
-    try {
-      // 1. Kênh websocket chuyên dụng cho cuộc gọi này
-      const webrtcChannel = supabase.channel(`webrtc-session-${currentId}`);
-      webrtcChannelRef.current = webrtcChannel;
-
-      // 2. Lấy media stream (cam & mic)
-      const stream = await getLocalMedia();
-
-      // 3. Khởi tạo PeerConnection
-      const pc = new RTCPeerConnection(RTC_CONFIG);
-      pcRef.current = pc;
-
-      // 4. Đưa tracks vào PeerConnection
-      if (stream) {
-        stream.getTracks().forEach(track => {
-          pc.addTrack(track, stream);
+      if (pc.signalingState === 'stable') {
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
         });
+        await pc.setLocalDescription(offer);
       }
 
-      // 5. Khi nhận được Audio / Video stream từ đối phương
-      pc.ontrack = (event) => {
-        console.log("WebRTC ontrack received stream:", event.track.kind, event.streams);
-        if (event.streams && event.streams[0] && remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-          remoteVideoRef.current.play().catch(err => console.warn("Auto-play error:", err));
-          setHasRemoteStream(true);
+      const sendOffer = () => {
+        if (pcRef.current?.connectionState === 'connected' || pcRef.current?.remoteDescription) {
+          if (offerSyncIntervalRef.current) clearInterval(offerSyncIntervalRef.current);
+          return;
         }
-      };
-
-      // 6. Trao đổi ICE Candidates
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          webrtcChannel.send({
+        const activeChannel = channel || sessionChannelRef.current;
+        if (pcRef.current?.localDescription && activeChannel) {
+          activeChannel.send({
             type: 'broadcast',
-            event: 'WEBRTC_ICE',
-            payload: { candidate: event.candidate }
+            event: 'WEBRTC_OFFER',
+            payload: { call_id: currentId, sdp: pcRef.current.localDescription }
           }).catch(() => {});
         }
       };
 
-      // 7. Lắng nghe các sự kiện WebRTC qua kênh riêng
-      webrtcChannel
-        .on('broadcast', { event: 'PEER_READY' }, async () => {
-          console.log("Peer announced READY");
-          if (asCaller && pcRef.current) {
-            await createAndSendOffer(pcRef.current, webrtcChannel);
-          }
-        })
-        .on('broadcast', { event: 'WEBRTC_OFFER' }, async (ev) => {
-          console.log("Received WEBRTC_OFFER");
-          if (pcRef.current) {
-            await handleRemoteOffer(ev.payload.sdp, pcRef.current, webrtcChannel);
-          } else {
-            pendingOfferRef.current = ev.payload.sdp;
-          }
-        })
-        .on('broadcast', { event: 'WEBRTC_ANSWER' }, async (ev) => {
-          console.log("Received WEBRTC_ANSWER");
-          if (pcRef.current) {
-            try {
-              await pcRef.current.setRemoteDescription(new RTCSessionDescription(ev.payload.sdp));
-              // Xả ICE candidates
-              while (iceCandidatesQueueRef.current.length > 0) {
-                const cand = iceCandidatesQueueRef.current.shift();
-                if (cand) {
-                  await pcRef.current.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
-                }
-              }
-            } catch (e) {
-              console.warn("Failed to set remote description on answer:", e);
-            }
-          }
-        })
-        .on('broadcast', { event: 'WEBRTC_ICE' }, async (ev) => {
-          if (ev.payload?.candidate) {
-            if (pcRef.current && pcRef.current.remoteDescription) {
-              await pcRef.current.addIceCandidate(new RTCIceCandidate(ev.payload.candidate)).catch(() => {});
-            } else {
-              iceCandidatesQueueRef.current.push(ev.payload.candidate);
-            }
-          }
-        })
-        .on('broadcast', { event: 'MEDIA_STATE' }, (ev) => {
-          if (typeof ev.payload?.isVideo === 'boolean') {
-            setRemoteIsVideo(ev.payload.isVideo);
-          }
-          if (typeof ev.payload?.isMuted === 'boolean') {
-            setRemoteIsMuted(ev.payload.isMuted);
-          }
-        })
-        .on('broadcast', { event: 'CALL_ENDED' }, () => {
-          setCallStatus("ended");
-          setStatusMessage("Đối phương đã cúp máy");
-          setTimeout(() => onClose(), 1200);
-        })
-        .subscribe(async (status) => {
-          if (status === 'SUBSCRIBED') {
-            // Thông báo ta đã sẵn sàng
-            webrtcChannel.send({
-              type: 'broadcast',
-              event: 'PEER_READY',
-              payload: { asCaller }
-            }).catch(() => {});
-
-            // Nếu là Caller, chủ động gửi offer
-            if (asCaller && pcRef.current) {
-              setTimeout(() => {
-                if (pcRef.current) createAndSendOffer(pcRef.current, webrtcChannel);
-              }, 400);
-            }
-          }
-        });
-
-      // Nếu có offer đang chờ xử lý từ trước
-      if (pendingOfferRef.current && pcRef.current) {
-        const sdp = pendingOfferRef.current;
-        pendingOfferRef.current = null;
-        await handleRemoteOffer(sdp, pcRef.current, webrtcChannel);
-      }
-
+      sendOffer();
+      if (offerSyncIntervalRef.current) clearInterval(offerSyncIntervalRef.current);
+      offerSyncIntervalRef.current = setInterval(sendOffer, 1000);
     } catch (err) {
-      console.error("Failed to init WebRTC session:", err);
+      console.error("[WebRTC] createAndBroadcastOffer error:", err);
     }
   };
 
+  // Vòng đời chính của WebRTC Session
   useEffect(() => {
     if (!isOpen) {
       setCallStatus(isInitiator ? "ringing" : "connected");
@@ -330,66 +221,308 @@ export default function CallModal({
     const currentId = callId || `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     setActiveCallId(currentId);
 
-    const globalChannel = supabase.channel('sos-emergency-alerts');
+    let isMounted = true;
 
-    if (isInitiator) {
-      setCallStatus("ringing");
-      // Bắn tín hiệu INCOMING_CALL cho đối phương
-      const callerName = currentUser?.user_metadata?.full_name || (currentUser?.email ? currentUser.email.split('@')[0] : "Người thân");
-      globalChannel.send({
-        type: 'broadcast',
-        event: 'INCOMING_CALL',
-        payload: {
-          call_id: currentId,
-          caller_id: currentUser?.id,
-          caller_name: callerName,
-          caller_role: currentUser?.user_metadata?.role || "Gia đình",
-          caller_avatar: currentUser?.user_metadata?.avatar_url,
-          target_id: targetId,
-          is_sos: isSOS,
-          initial_video: isVideo,
-          timestamp: new Date().toISOString()
-        }
-      }).catch(e => console.warn("Failed to broadcast incoming call:", e));
+    const startCallWorkflow = async () => {
+      // 1. Lấy camera và microphone local
+      const stream = await getLocalMedia(facingMode, isVideo);
+      if (!isMounted) return;
 
-      // Hết 35 giây không ai nhấc máy -> Ghi nhận cuộc gọi nhỡ và tự ngắt
-      const timeout = setTimeout(() => {
-        setCallStatus("ended");
-        setStatusMessage("Người nhận không trả lời (Đã ghi nhận cuộc gọi nhỡ)");
-        setTimeout(() => onClose(), 1500);
-      }, 35000);
+      // 2. Khởi tạo RTCPeerConnection
+      const pc = new RTCPeerConnection(RTC_CONFIG);
+      pcRef.current = pc;
 
-      // Lắng nghe người nhận trả lời hoặc từ chối
-      globalChannel
-        .on('broadcast', { event: 'CALL_ACCEPTED' }, async (ev) => {
-          if (ev.payload?.call_id === currentId) {
-            clearTimeout(timeout);
-            setCallStatus("connected");
-            await initWebRTCSession(currentId, true);
+      // Đưa local tracks vào PeerConnection
+      if (stream) {
+        stream.getTracks().forEach(track => {
+          pc.addTrack(track, stream);
+        });
+      }
+
+      // Xử lý luồng Media từ đối phương truyền sang
+      pc.ontrack = (event) => {
+        console.log("[WebRTC] ontrack received:", event.track.kind, event.streams);
+        let remoteStream = event.streams && event.streams[0];
+        if (!remoteStream) {
+          if (!remoteStreamRef.current) {
+            remoteStreamRef.current = new MediaStream();
           }
+          remoteStreamRef.current.addTrack(event.track);
+          remoteStream = remoteStreamRef.current;
+        } else {
+          remoteStreamRef.current = remoteStream;
+        }
+
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+          remoteVideoRef.current.play().catch(e => console.warn("Video play err:", e));
+        }
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = remoteStream;
+          remoteAudioRef.current.play().catch(e => console.warn("Audio play err:", e));
+        }
+        setHasRemoteStream(true);
+      };
+
+      // Xử lý và gửi ICE candidates
+      pc.onicecandidate = (event) => {
+        if (event.candidate && sessionChannelRef.current) {
+          sessionChannelRef.current.send({
+            type: 'broadcast',
+            event: 'WEBRTC_ICE',
+            payload: { call_id: currentId, candidate: event.candidate }
+          }).catch(() => {});
+        }
+      };
+
+      // Theo dõi trạng thái kết nối WebRTC
+      pc.onconnectionstatechange = () => {
+        console.log("[WebRTC] Connection state changed:", pc.connectionState);
+        if (pc.connectionState === 'connected') {
+          setCallStatus("connected");
+          setStatusMessage("");
+          if (offerSyncIntervalRef.current) clearInterval(offerSyncIntervalRef.current);
+          if (answerSyncIntervalRef.current) clearInterval(answerSyncIntervalRef.current);
+          if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
+        }
+      };
+
+      // 3. Kết nối Kênh Signaling chuyên dụng cho phiên gọi này
+      const sessionChannel = supabase.channel(`call-session-${currentId}`, {
+        config: { broadcast: { self: false } }
+      });
+      sessionChannelRef.current = sessionChannel;
+
+      // Đồng thời kết nối kênh toàn cục để nghe sự kiện chấp nhận/từ chối
+      const globalChannel = supabase.channel('sos-emergency-alerts');
+      globalChannelRef.current = globalChannel;
+
+      const handleCallAccepted = async (payload: any) => {
+        if (payload?.call_id !== currentId) return;
+        console.log("[WebRTC] Call Accepted signal received:", payload);
+        if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
+        if (ringIntervalRef.current) clearInterval(ringIntervalRef.current);
+        setCallStatus("connected");
+
+        if (isInitiator && pcRef.current) {
+          await createAndBroadcastOffer(pcRef.current, sessionChannel, currentId);
+        }
+      };
+
+      const handleRemoteOffer = async (payload: any) => {
+        if (payload?.call_id !== currentId || !payload?.sdp) return;
+        const pc = pcRef.current;
+        if (!pc) return;
+
+        if (!pc.remoteDescription) {
+          console.log("[WebRTC] Setting Remote Description (Offer)");
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+
+            // Xả các ICE candidates đã được nhận trước đó
+            while (iceCandidatesQueueRef.current.length > 0) {
+              const c = iceCandidatesQueueRef.current.shift();
+              if (c) await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+            }
+
+            // Tạo Answer
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            // Gửi Answer ngay lập tức
+            sessionChannel.send({
+              type: 'broadcast',
+              event: 'WEBRTC_ANSWER',
+              payload: { call_id: currentId, sdp: answer }
+            }).catch(() => {});
+
+            // Lặp lại gửi Answer mỗi giây cho đến khi kết nối thành công hoặc nhận được ACK
+            if (answerSyncIntervalRef.current) clearInterval(answerSyncIntervalRef.current);
+            answerSyncIntervalRef.current = setInterval(() => {
+              if (pcRef.current?.connectionState === 'connected') {
+                clearInterval(answerSyncIntervalRef.current);
+                return;
+              }
+              if (pcRef.current?.localDescription && sessionChannelRef.current) {
+                sessionChannelRef.current.send({
+                  type: 'broadcast',
+                  event: 'WEBRTC_ANSWER',
+                  payload: { call_id: currentId, sdp: pcRef.current.localDescription }
+                }).catch(() => {});
+              }
+            }, 1000);
+          } catch (err) {
+            console.error("[WebRTC] Error handling remote offer:", err);
+          }
+        }
+      };
+
+      const handleRemoteAnswer = async (payload: any) => {
+        if (payload?.call_id !== currentId || !payload?.sdp) return;
+        const pc = pcRef.current;
+        if (!pc) return;
+
+        if (pc.signalingState === 'have-local-offer') {
+          console.log("[WebRTC] Setting Remote Description (Answer)");
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+
+            // Xả các ICE candidates
+            while (iceCandidatesQueueRef.current.length > 0) {
+              const c = iceCandidatesQueueRef.current.shift();
+              if (c) await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+            }
+
+            // Dừng gửi offer
+            if (offerSyncIntervalRef.current) clearInterval(offerSyncIntervalRef.current);
+
+            // Gửi ACK báo đã nhận Answer
+            sessionChannel.send({
+              type: 'broadcast',
+              event: 'WEBRTC_ACK',
+              payload: { call_id: currentId }
+            }).catch(() => {});
+
+            setCallStatus("connected");
+          } catch (err) {
+            console.error("[WebRTC] Error setting remote answer:", err);
+          }
+        }
+      };
+
+      const handleRemoteIce = async (payload: any) => {
+        if (payload?.call_id !== currentId || !payload?.candidate) return;
+        const pc = pcRef.current;
+        if (pc && pc.remoteDescription) {
+          await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(() => {});
+        } else {
+          iceCandidatesQueueRef.current.push(payload.candidate);
+        }
+      };
+
+      const handleMediaState = (payload: any) => {
+        if (typeof payload?.isVideo === 'boolean') setRemoteIsVideo(payload.isVideo);
+        if (typeof payload?.isMuted === 'boolean') setRemoteIsMuted(payload.isMuted);
+      };
+
+      const handleCallTerminated = () => {
+        setCallStatus("ended");
+        setStatusMessage("Đối phương đã cúp máy");
+        setTimeout(() => onClose(), 1200);
+      };
+
+      // Đăng ký nhận sự kiện trên Kênh Session
+      sessionChannel
+        .on('broadcast', { event: 'CALL_ACCEPTED' }, (ev) => handleCallAccepted(ev.payload))
+        .on('broadcast', { event: 'WEBRTC_OFFER' }, (ev) => handleRemoteOffer(ev.payload))
+        .on('broadcast', { event: 'WEBRTC_ANSWER' }, (ev) => handleRemoteAnswer(ev.payload))
+        .on('broadcast', { event: 'WEBRTC_ACK' }, () => {
+          if (answerSyncIntervalRef.current) clearInterval(answerSyncIntervalRef.current);
+          setCallStatus("connected");
         })
+        .on('broadcast', { event: 'WEBRTC_ICE' }, (ev) => handleRemoteIce(ev.payload))
+        .on('broadcast', { event: 'MEDIA_STATE' }, (ev) => handleMediaState(ev.payload))
+        .on('broadcast', { event: 'CALL_ENDED' }, handleCallTerminated)
+        .on('broadcast', { event: 'CALL_REJECTED' }, () => {
+          setCallStatus("ended");
+          setStatusMessage("Người nhận bận (Cuộc gọi bị từ chối)");
+          setTimeout(() => onClose(), 1800);
+        });
+
+      // Đăng ký nhận sự kiện trên Kênh Toàn cục (Backup)
+      globalChannel
+        .on('broadcast', { event: 'CALL_ACCEPTED' }, (ev) => handleCallAccepted(ev.payload))
         .on('broadcast', { event: 'CALL_REJECTED' }, (ev) => {
           if (ev.payload?.call_id === currentId) {
-            clearTimeout(timeout);
             setCallStatus("ended");
             setStatusMessage("Người nhận bận (Cuộc gọi bị từ chối)");
             setTimeout(() => onClose(), 1800);
           }
+        })
+        .on('broadcast', { event: 'CALL_ENDED' }, (ev) => {
+          if (ev.payload?.call_id === currentId) {
+            handleCallTerminated();
+          }
         });
 
-      return () => {
-        clearTimeout(timeout);
-        cleanupMedia();
-      };
-    } else {
-      // Người nhận cuộc gọi (Callee): Bắt đầu ở trạng thái connected
-      setCallStatus("connected");
-      initWebRTCSession(currentId, false);
+      // Kích hoạt lắng nghe trên Session Channel
+      sessionChannel.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED' && isMounted) {
+          console.log("[WebRTC] Session channel joined successfully:", currentId);
 
-      return () => {
-        cleanupMedia();
-      };
-    }
+          if (!isInitiator) {
+            // Callee: Phát tín hiệu CALL_ACCEPTED trên session channel
+            sessionChannel.send({
+              type: 'broadcast',
+              event: 'CALL_ACCEPTED',
+              payload: {
+                call_id: currentId,
+                accepted_by_id: currentUser?.id,
+                accepted_by_name: currentUser?.user_metadata?.full_name || "Đối phương"
+              }
+            }).catch(() => {});
+          } else {
+            // Caller: Khởi tạo offer ban đầu
+            if (pcRef.current) {
+              await createAndBroadcastOffer(pcRef.current, sessionChannel, currentId);
+            }
+          }
+        }
+      });
+
+      // Thiết lập Caller: Đổ chuông và phát tín hiệu INCOMING_CALL
+      if (isInitiator) {
+        setCallStatus("ringing");
+
+        const sendIncomingCall = () => {
+          const callerName = currentUser?.user_metadata?.full_name || (currentUser?.email ? currentUser.email.split('@')[0] : "Người thân");
+          const payload = {
+            call_id: currentId,
+            caller_id: currentUser?.id,
+            caller_name: callerName,
+            caller_role: currentUser?.user_metadata?.role || "Gia đình",
+            caller_avatar: currentUser?.user_metadata?.avatar_url,
+            target_id: targetId,
+            is_sos: isSOS,
+            initial_video: isVideo,
+            timestamp: new Date().toISOString()
+          };
+
+          globalChannel.send({
+            type: 'broadcast',
+            event: 'INCOMING_CALL',
+            payload
+          }).catch(() => {});
+
+          sessionChannel.send({
+            type: 'broadcast',
+            event: 'INCOMING_CALL',
+            payload
+          }).catch(() => {});
+        };
+
+        sendIncomingCall();
+        ringIntervalRef.current = setInterval(sendIncomingCall, 2000);
+
+        // Hết 35 giây không nghe máy -> Tự ngắt
+        callTimeoutRef.current = setTimeout(() => {
+          if (ringIntervalRef.current) clearInterval(ringIntervalRef.current);
+          if (offerSyncIntervalRef.current) clearInterval(offerSyncIntervalRef.current);
+          setCallStatus("ended");
+          setStatusMessage("Người nhận không trả lời (Đã ghi nhận cuộc gọi nhỡ)");
+          setTimeout(() => onClose(), 1500);
+        }, 35000);
+      } else {
+        setCallStatus("connected");
+      }
+    };
+
+    startCallWorkflow();
+
+    return () => {
+      isMounted = false;
+      cleanupMedia();
+    };
   }, [isOpen, callId, isInitiator]);
 
   // Bộ đếm thời gian khi cuộc gọi kết nối
@@ -402,6 +535,17 @@ export default function CallModal({
     }
     return () => clearInterval(interval);
   }, [isOpen, callStatus]);
+
+  // Bắn trạng thái Media sang đối phương
+  const broadcastMediaState = (state: { isMuted: boolean; isVideo: boolean }) => {
+    if (sessionChannelRef.current) {
+      sessionChannelRef.current.send({
+        type: 'broadcast',
+        event: 'MEDIA_STATE',
+        payload: state
+      }).catch(() => {});
+    }
+  };
 
   // Bật/Tắt Micro thực tế (Mute/Unmute Audio Track)
   const toggleMute = () => {
@@ -419,13 +563,7 @@ export default function CallModal({
         }
       });
     }
-    if (webrtcChannelRef.current) {
-      webrtcChannelRef.current.send({
-        type: 'broadcast',
-        event: 'MEDIA_STATE',
-        payload: { isMuted: next, isVideo }
-      }).catch(() => {});
-    }
+    broadcastMediaState({ isMuted: next, isVideo });
   };
 
   // Bật/Tắt Camera thực tế (Video Track)
@@ -444,21 +582,18 @@ export default function CallModal({
         }
       });
     }
-    if (webrtcChannelRef.current) {
-      webrtcChannelRef.current.send({
-        type: 'broadcast',
-        event: 'MEDIA_STATE',
-        payload: { isVideo: next, isMuted }
-      }).catch(() => {});
-    }
+    broadcastMediaState({ isVideo: next, isMuted });
   };
 
-  // Bật/Tắt Loa ngoài thực tế (Mute Remote Audio)
+  // Bật/Tắt Loa ngoài thực tế (Mute Remote Audio & Video)
   const toggleSpeaker = () => {
     const next = !isSpeaker;
     setIsSpeaker(next);
     if (remoteVideoRef.current) {
       remoteVideoRef.current.muted = !next;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.muted = !next;
     }
   };
 
@@ -487,24 +622,25 @@ export default function CallModal({
     }
   };
 
+  // Cúp máy kết thúc cuộc gọi
   const handleEndCall = () => {
     setCallStatus("ended");
     setStatusMessage("Cuộc gọi đã kết thúc");
 
-    // Broadcast kết thúc cuộc gọi trên cả kênh WebRTC và kênh toàn cục
-    if (webrtcChannelRef.current) {
-      webrtcChannelRef.current.send({
+    if (sessionChannelRef.current) {
+      sessionChannelRef.current.send({
         type: 'broadcast',
         event: 'CALL_ENDED',
-        payload: { call_id: activeCallId }
+        payload: { call_id: activeCallId, ended_by_id: currentUser?.id }
       }).catch(() => {});
     }
-    const globalChannel = supabase.channel('sos-emergency-alerts');
-    globalChannel.send({
-      type: 'broadcast',
-      event: 'CALL_ENDED',
-      payload: { call_id: activeCallId, ended_by_id: currentUser?.id }
-    }).catch(() => {});
+    if (globalChannelRef.current) {
+      globalChannelRef.current.send({
+        type: 'broadcast',
+        event: 'CALL_ENDED',
+        payload: { call_id: activeCallId, ended_by_id: currentUser?.id }
+      }).catch(() => {});
+    }
 
     cleanupMedia();
     setTimeout(() => {
@@ -520,7 +656,7 @@ export default function CallModal({
     return `${String(mins).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`;
   };
 
-  const showVideoOverlay = callStatus === "connected" && (isVideo || (hasRemoteStream && remoteIsVideo));
+  const showVideoOverlay = callStatus === "connected" && isVideo;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in select-none">
@@ -529,7 +665,16 @@ export default function CallModal({
         {/* Glow effect */}
         <div className={`absolute top-0 w-48 h-48 rounded-full blur-3xl pointer-events-none ${isSOS ? "bg-rose-500/30" : "bg-emerald-500/20"}`} />
 
-        {/* 1. KHUNG REMOTE VIDEO WEBRTC (LUÔN TỒN TẠI TRONG DOM ĐỂ PHÁT ÂM THANH & HÌNH ẢNH) */}
+        {/* Remote Audio Track Player (Đảm bảo âm thanh đàm thoại 100% không bao giờ bị ngắt) */}
+        <audio
+          ref={remoteAudioRef}
+          autoPlay
+          playsInline
+          muted={!isSpeaker}
+          className="hidden"
+        />
+
+        {/* 1. KHUNG REMOTE VIDEO WEBRTC (LUÔN TỒN TẠI TRONG DOM ĐỂ HIỂN THỊ HÌNH ẢNH) */}
         <video
           ref={remoteVideoRef}
           autoPlay
@@ -599,13 +744,27 @@ export default function CallModal({
               )}
               {callStatus === "connected" && (
                 <span className="text-emerald-300">
-                  Đã kết nối WebRTC • {formatTime(callDuration)}
+                  WebRTC Trực Tiếp • {formatTime(callDuration)}
                 </span>
               )}
               {callStatus === "ended" && (
                 <span className="text-rose-400">{statusMessage || "Cuộc gọi đã kết thúc"}</span>
               )}
             </div>
+
+            {callStatus === "connected" && (
+              <div className="flex items-center gap-2">
+                {hasRemoteStream ? (
+                  <span className="text-xs text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                    🟢 Âm thanh & Hình ảnh đã đồng bộ
+                  </span>
+                ) : (
+                  <span className="text-xs text-yellow-300 bg-yellow-950/60 px-2.5 py-0.5 rounded-full border border-yellow-500/30 animate-pulse">
+                    🟡 Đang thiết lập WebRTC P2P...
+                  </span>
+                )}
+              </div>
+            )}
 
             {remoteIsMuted && callStatus === "connected" && (
               <span className="text-[11px] text-amber-300 bg-black/40 px-3 py-1 rounded-full border border-amber-300/30 animate-pulse">

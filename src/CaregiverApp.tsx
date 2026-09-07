@@ -94,9 +94,11 @@ function CaregiverAppContent({ user, onLogout }: Props) {
     });
   };
 
+  const globalChannelRef = useRef<any>(null);
+
   const handleAcceptIncomingCall = () => {
     if (!incomingCall) return;
-    const channel = supabase.channel('sos-emergency-alerts');
+    const channel = globalChannelRef.current || supabase.channel('sos-emergency-alerts');
     channel.send({
       type: 'broadcast',
       event: 'CALL_ACCEPTED',
@@ -120,7 +122,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
 
   const handleDeclineIncomingCall = () => {
     if (!incomingCall) return;
-    const channel = supabase.channel('sos-emergency-alerts');
+    const channel = globalChannelRef.current || supabase.channel('sos-emergency-alerts');
     channel.send({
       type: 'broadcast',
       event: 'CALL_REJECTED',
@@ -203,9 +205,11 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         }
       })
       .subscribe();
+    globalChannelRef.current = channel;
 
     return () => {
       supabase.removeChannel(channel);
+      globalChannelRef.current = null;
     };
   }, [linkedPatientId, user?.id]);
 

@@ -85,6 +85,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
 
   const incomingCallRef = useRef(incomingCall);
   incomingCallRef.current = incomingCall;
+  const globalChannelRef = useRef<any>(null);
 
   // Lắng nghe cuộc gọi đến & cấu hình xác nhận thuốc thời gian thực cho Người Bệnh
   useEffect(() => {
@@ -130,15 +131,17 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         }
       })
       .subscribe();
+    globalChannelRef.current = channel;
 
     return () => {
       supabase.removeChannel(channel);
+      globalChannelRef.current = null;
     };
   }, [user?.id]);
 
   const handleAcceptCall = () => {
     if (!incomingCall) return;
-    const channel = supabase.channel('sos-emergency-alerts');
+    const channel = globalChannelRef.current || supabase.channel('sos-emergency-alerts');
     channel.send({
       type: 'broadcast',
       event: 'CALL_ACCEPTED',
@@ -162,7 +165,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
 
   const handleDeclineCall = () => {
     if (!incomingCall) return;
-    const channel = supabase.channel('sos-emergency-alerts');
+    const channel = globalChannelRef.current || supabase.channel('sos-emergency-alerts');
     channel.send({
       type: 'broadcast',
       event: 'CALL_REJECTED',
