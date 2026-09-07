@@ -11,16 +11,22 @@ import {
   VideoOff,
   SwitchCamera
 } from "lucide-react";
+import { supabase } from "../lib/supabase";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  // User info
+  currentUser?: any;
+  targetId?: string;
   contactName?: string;
   contactRole?: string;
   contactPhone?: string;
   avatarUrl?: string;
   isSOS?: boolean;
   initialVideo?: boolean;
+  callId?: string;
+  isInitiator?: boolean; // true: Người bắt đầu gọi, false: Người nhận cuộc gọi
   // Legacy aliases
   patientName?: string;
   patientPhone?: string;
@@ -30,12 +36,16 @@ interface Props {
 export default function CallModal({
   isOpen,
   onClose,
+  currentUser,
+  targetId,
   contactName,
   contactRole,
   contactPhone,
   avatarUrl,
   isSOS = false,
   initialVideo = false,
+  callId,
+  isInitiator = true,
   patientName,
   patientPhone,
   reminderNote = "Nhắc uống thuốc theo đúng lịch trình hôm nay"
@@ -44,7 +54,9 @@ export default function CallModal({
   const displayPhone = contactPhone || patientPhone || (isSOS ? "Đường dây ưu tiên SOS" : "0901 234 567");
   const displayRole = contactRole || (isSOS ? "Cuộc gọi SOS Khẩn cấp" : "Người chăm sóc");
 
-  const [callStatus, setCallStatus] = useState<"ringing" | "connected" | "ended">("ringing");
+  const [activeCallId, setActiveCallId] = useState<string>(callId || "");
+  const [callStatus, setCallStatus] = useState<"ringing" | "connected" | "ended">(isInitiator ? "ringing" : "connected");
+  const [statusMessage, setStatusMessage] = useState<string>("");
   const [callDuration, setCallDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(true);
@@ -89,28 +101,102 @@ export default function CallModal({
 
   useEffect(() => {
     if (!isOpen) {
-      setCallStatus("ringing");
+      setCallStatus(isInitiator ? "ringing" : "connected");
       setCallDuration(0);
       setAiVoiceActive(false);
+      setStatusMessage("");
       stopCamera();
       return;
     }
+
+    const currentId = callId || `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    setActiveCallId(currentId);
 
     if (isVideo) {
       startCamera();
     }
 
-    // Auto connect simulated call after 2s
-    const ringTimer = setTimeout(() => {
+    const channel = supabase.channel('sos-emergency-alerts');
+
+    if (isInitiator) {
+      setCallStatus("ringing");
+      // Bắn tín hiệu INCOMING_CALL cho đối phương
+      const callerName = currentUser?.user_metadata?.full_name || (currentUser?.email ? currentUser.email.split('@')[0] : "Người thân");
+      channel.send({
+        type: 'broadcast',
+        event: 'INCOMING_CALL',
+        payload: {
+          call_id: currentId,
+          caller_id: currentUser?.id,
+          caller_name: callerName,
+          caller_role: currentUser?.user_metadata?.role || "Gia đình",
+          caller_avatar: currentUser?.user_metadata?.avatar_url,
+          target_id: targetId,
+          is_sos: isSOS,
+          initial_video: isVideo,
+          timestamp: new Date().toISOString()
+        }
+      }).catch(e => console.warn("Failed to broadcast incoming call:", e));
+
+      // Hết 35 giây không ai nhấc máy -> tự ngắt
+      const timeout = setTimeout(() => {
+        setCallStatus("ended");
+        setStatusMessage("Người nhận không trả lời");
+        setTimeout(() => onClose(), 1500);
+      }, 35000);
+
+      // Lắng nghe chấp nhận, từ chối hoặc kết thúc
+      channel
+        .on('broadcast', { event: 'CALL_ACCEPTED' }, (ev) => {
+          if (ev.payload?.call_id === currentId) {
+            clearTimeout(timeout);
+            setCallStatus("connected");
+          }
+        })
+        .on('broadcast', { event: 'CALL_REJECTED' }, (ev) => {
+          if (ev.payload?.call_id === currentId) {
+            clearTimeout(timeout);
+            setCallStatus("ended");
+            setStatusMessage("Người nhận bận (Cuộc gọi bị từ chối)");
+            setTimeout(() => onClose(), 1800);
+          }
+        })
+        .on('broadcast', { event: 'CALL_ENDED' }, (ev) => {
+          if (ev.payload?.call_id === currentId) {
+            clearTimeout(timeout);
+            setCallStatus("ended");
+            setStatusMessage("Cuộc gọi đã kết thúc");
+            setTimeout(() => onClose(), 1200);
+          }
+        })
+        .subscribe();
+
+      return () => {
+        clearTimeout(timeout);
+        stopCamera();
+      };
+    } else {
+      // Người nhận cuộc gọi: Bắt đầu ở trạng thái connected
       setCallStatus("connected");
-    } , 2000);
 
-    return () => {
-      clearTimeout(ringTimer);
-      stopCamera();
-    };
-  }, [isOpen, isVideo]);
+      // Lắng nghe sự kiện ngắt máy từ đối phương
+      channel
+        .on('broadcast', { event: 'CALL_ENDED' }, (ev) => {
+          if (ev.payload?.call_id === currentId) {
+            setCallStatus("ended");
+            setStatusMessage("Cuộc gọi đã kết thúc");
+            setTimeout(() => onClose(), 1200);
+          }
+        })
+        .subscribe();
 
+      return () => {
+        stopCamera();
+      };
+    }
+  }, [isOpen, callId, isInitiator, isVideo]);
+
+  // Bộ đếm thời gian khi cuộc gọi kết nối
   useEffect(() => {
     let interval: any;
     if (isOpen && callStatus === "connected") {
@@ -148,6 +234,18 @@ export default function CallModal({
   const handleEndCall = () => {
     setCallStatus("ended");
     stopCamera();
+
+    // Broadcast kết thúc cuộc gọi
+    const channel = supabase.channel('sos-emergency-alerts');
+    channel.send({
+      type: 'broadcast',
+      event: 'CALL_ENDED',
+      payload: {
+        call_id: activeCallId,
+        ended_by_id: currentUser?.id
+      }
+    }).catch(() => {});
+
     setTimeout(() => {
       onClose();
     }, 600);
@@ -236,12 +334,14 @@ export default function CallModal({
 
             <div className="px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-xs font-semibold">
               {callStatus === "ringing" && (
-                <span className="text-yellow-300 animate-pulse">Đang đổ chuông...</span>
+                <span className="text-yellow-300 animate-pulse">Đang đổ chuông máy đối phương...</span>
               )}
               {callStatus === "connected" && (
                 <span className="text-emerald-300">Đã kết nối • {formatTime(callDuration)}</span>
               )}
-              {callStatus === "ended" && <span className="text-rose-400">Cuộc gọi đã kết thúc</span>}
+              {callStatus === "ended" && (
+                <span className="text-rose-400">{statusMessage || "Cuộc gọi đã kết thúc"}</span>
+              )}
             </div>
           </div>
         )}

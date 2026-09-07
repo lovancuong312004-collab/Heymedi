@@ -13,6 +13,7 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
   
   // Calling state
   const [callingContact, setCallingContact] = useState<{
+    id?: string;
     name: string;
     role?: string;
     phone?: string;
@@ -211,6 +212,7 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => setCallingContact({
+                  id: linkedPatientId || undefined,
                   name: patientName,
                   role: "Người bệnh",
                   phone: "0901 234 567",
@@ -280,6 +282,7 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
                     {!c.isMe ? (
                       <button 
                         onClick={() => setCallingContact({
+                          id: c.id,
                           name: c.name,
                           role: c.role,
                           phone: c.phone || "0912 345 678",
@@ -316,15 +319,18 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
         </div>
       )}
 
-      {/* Modal Gọi điện mô phỏng Hackathon */}
+      {/* Modal Gọi điện realtime hai chiều */}
       {callingContact && (
         <CallModal 
           isOpen={!!callingContact}
           onClose={() => setCallingContact(null)}
+          currentUser={user}
+          targetId={callingContact.id}
           contactName={callingContact.name}
           contactRole={callingContact.role}
           contactPhone={callingContact.phone}
           avatarUrl={callingContact.avatarUrl}
+          isInitiator={true}
         />
       )}
     </div>

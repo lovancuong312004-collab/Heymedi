@@ -5,7 +5,10 @@ import HomeScreen from "./HomeScreen";
 import MedsScreen from "./MedsScreen";
 import FamilyScreen from "./FamilyScreen";
 import SettingsScreen from "./SettingsScreen";
+import IncomingCallModal from "./components/IncomingCallModal";
+import CallModal from "./caregiver/CallModal";
 import { silentAudioUnlock } from "./utils/voiceAssistant";
+import { supabase } from "./lib/supabase";
 
 interface Props {
   user: any;
@@ -16,6 +19,25 @@ type ElderlyTab = "home" | "meds" | "family" | "settings";
 
 export default function ElderlyApp({ user, onLogout }: Props) {
   const [activeTab, setActiveTab] = useState<ElderlyTab>("home");
+
+  // Realtime Calling state
+  const [incomingCall, setIncomingCall] = useState<{
+    callId: string;
+    callerName: string;
+    callerRole?: string;
+    callerAvatar?: string;
+    isSOS?: boolean;
+  } | null>(null);
+
+  const [activeCall, setActiveCall] = useState<{
+    callId: string;
+    contactName: string;
+    contactRole?: string;
+    contactPhone?: string;
+    avatarUrl?: string;
+    isSOS?: boolean;
+    isInitiator?: boolean;
+  } | null>(null);
 
   useEffect(() => {
     // 1. Silent Audio Unlock on first touch/click
@@ -55,8 +77,110 @@ export default function ElderlyApp({ user, onLogout }: Props) {
     };
   }, []);
 
+  // Lắng nghe cuộc gọi đến thời gian thực cho Người Bệnh
+  useEffect(() => {
+    const channel = supabase.channel('sos-emergency-alerts')
+      .on('broadcast', { event: 'INCOMING_CALL' }, (event) => {
+        console.log("ElderlyApp received INCOMING_CALL:", event);
+        const p = event.payload;
+        if (!p || p.caller_id === user?.id) return;
+        if (p.target_id && p.target_id !== user?.id) return;
+
+        setIncomingCall({
+          callId: p.call_id,
+          callerName: p.caller_name || "Người thân",
+          callerRole: p.caller_role || "Người chăm sóc",
+          callerAvatar: p.caller_avatar,
+          isSOS: p.is_sos,
+        });
+      })
+      .on('broadcast', { event: 'CALL_ENDED' }, (event) => {
+        if (incomingCall && event.payload?.call_id === incomingCall.callId) {
+          setIncomingCall(null);
+        }
+      })
+      .on('broadcast', { event: 'CALL_REJECTED' }, (event) => {
+        if (incomingCall && event.payload?.call_id === incomingCall.callId) {
+          setIncomingCall(null);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, incomingCall]);
+
+  const handleAcceptCall = () => {
+    if (!incomingCall) return;
+    const channel = supabase.channel('sos-emergency-alerts');
+    channel.send({
+      type: 'broadcast',
+      event: 'CALL_ACCEPTED',
+      payload: {
+        call_id: incomingCall.callId,
+        accepted_by_id: user?.id,
+        accepted_by_name: user?.user_metadata?.full_name || "Bác",
+      }
+    }).catch(() => {});
+
+    setActiveCall({
+      callId: incomingCall.callId,
+      contactName: incomingCall.callerName,
+      contactRole: incomingCall.callerRole,
+      avatarUrl: incomingCall.callerAvatar,
+      isSOS: incomingCall.isSOS,
+      isInitiator: false,
+    });
+    setIncomingCall(null);
+  };
+
+  const handleDeclineCall = () => {
+    if (!incomingCall) return;
+    const channel = supabase.channel('sos-emergency-alerts');
+    channel.send({
+      type: 'broadcast',
+      event: 'CALL_REJECTED',
+      payload: {
+        call_id: incomingCall.callId,
+        rejected_by_id: user?.id
+      }
+    }).catch(() => {});
+    setIncomingCall(null);
+  };
+
   return (
     <div className="w-full flex flex-col min-h-screen relative bg-[#F4F7FB]">
+      
+      {/* Modal Cuộc gọi đến toàn cục */}
+      {incomingCall && (
+        <IncomingCallModal
+          isOpen={!!incomingCall}
+          callerName={incomingCall.callerName}
+          callerRole={incomingCall.callerRole}
+          callerAvatar={incomingCall.callerAvatar}
+          isSOS={incomingCall.isSOS}
+          onAccept={handleAcceptCall}
+          onDecline={handleDeclineCall}
+        />
+      )}
+
+      {/* Modal Đang thoại */}
+      {activeCall && (
+        <CallModal
+          isOpen={!!activeCall}
+          onClose={() => setActiveCall(null)}
+          currentUser={user}
+          callId={activeCall.callId}
+          contactName={activeCall.contactName}
+          contactRole={activeCall.contactRole}
+          contactPhone={activeCall.contactPhone}
+          avatarUrl={activeCall.avatarUrl}
+          isSOS={activeCall.isSOS}
+          isInitiator={activeCall.isInitiator}
+        />
+      )}
+
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto pb-24 min-h-0">
         {activeTab === "home" && (

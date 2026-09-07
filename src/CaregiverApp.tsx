@@ -16,6 +16,7 @@ import AIReportScreen from "./caregiver/AIReportScreen";
 import CaregiverSettings from "./caregiver/CaregiverSettings";
 import CaregiverFamilyScreen from "./caregiver/CaregiverFamilyScreen";
 import CallModal from "./caregiver/CallModal";
+import IncomingCallModal from "./components/IncomingCallModal";
 import CaregiverSOSAlertModal, { type SOSAlertPayload } from "./caregiver/CaregiverSOSAlertModal";
 import ScanPrescriptionModal from "./caregiver/ScanPrescriptionModal";
 import AddMedModal from "./caregiver/AddMedModal";
@@ -39,16 +40,87 @@ export default function CaregiverApp({ user, onLogout }: Props) {
 
 function CaregiverAppContent({ user, onLogout }: Props) {
   const { linkedPatientId, patientInfo } = useFamily();
-  const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Thành viên");
+  const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Người bệnh");
   const patientPhone = patientInfo?.phone || "0901 234 567";
 
   const [activeTab, setActiveTab] = useState<CaregiverTab>("dashboard");
-  const [isCallOpen, setIsCallOpen] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [isAddMedOpen, setIsAddMedOpen] = useState(false);
   const [sosAlert, setSosAlert] = useState<SOSAlertPayload | null>(null);
 
-  // Global Emergency SOS & Medication Proof Listener
+  // Cuộc gọi đến và Cuộc gọi đang hoạt động
+  const [incomingCall, setIncomingCall] = useState<{
+    callId: string;
+    callerName: string;
+    callerRole?: string;
+    callerAvatar?: string;
+    isSOS?: boolean;
+  } | null>(null);
+
+  const [activeCall, setActiveCall] = useState<{
+    callId: string;
+    contactName: string;
+    contactRole?: string;
+    contactPhone?: string;
+    avatarUrl?: string;
+    isSOS?: boolean;
+    initialVideo?: boolean;
+    isInitiator?: boolean;
+  } | null>(null);
+
+  const handleStartCall = (options?: { isSOS?: boolean; video?: boolean }) => {
+    const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    setActiveCall({
+      callId,
+      contactName: patientName,
+      contactPhone: patientPhone,
+      contactRole: "Người bệnh",
+      avatarUrl: patientInfo?.avatar_url,
+      isSOS: options?.isSOS || false,
+      initialVideo: options?.video || false,
+      isInitiator: true,
+    });
+  };
+
+  const handleAcceptIncomingCall = () => {
+    if (!incomingCall) return;
+    const channel = supabase.channel('sos-emergency-alerts');
+    channel.send({
+      type: 'broadcast',
+      event: 'CALL_ACCEPTED',
+      payload: {
+        call_id: incomingCall.callId,
+        accepted_by_id: user?.id,
+        accepted_by_name: user?.user_metadata?.full_name || "Người chăm sóc",
+      }
+    }).catch(() => {});
+
+    setActiveCall({
+      callId: incomingCall.callId,
+      contactName: incomingCall.callerName,
+      contactRole: incomingCall.callerRole,
+      avatarUrl: incomingCall.callerAvatar,
+      isSOS: incomingCall.isSOS,
+      isInitiator: false,
+    });
+    setIncomingCall(null);
+  };
+
+  const handleDeclineIncomingCall = () => {
+    if (!incomingCall) return;
+    const channel = supabase.channel('sos-emergency-alerts');
+    channel.send({
+      type: 'broadcast',
+      event: 'CALL_REJECTED',
+      payload: {
+        call_id: incomingCall.callId,
+        rejected_by_id: user?.id
+      }
+    }).catch(() => {});
+    setIncomingCall(null);
+  };
+
+  // Global Emergency SOS & Medication Proof & Incoming Call Listener
   useEffect(() => {
     const channel = supabase.channel('sos-emergency-alerts')
       .on('broadcast', { event: 'EMERGENCY' }, (event) => {
@@ -58,6 +130,31 @@ function CaregiverAppContent({ user, onLogout }: Props) {
           if (!linkedPatientId || payload.patient_id === linkedPatientId) {
             setSosAlert(payload);
           }
+        }
+      })
+      .on('broadcast', { event: 'INCOMING_CALL' }, (event) => {
+        console.log("Caregiver received INCOMING_CALL:", event);
+        const p = event.payload;
+        if (!p || p.caller_id === user?.id) return;
+        if (p.target_id && p.target_id !== user?.id) return;
+        if (!p.target_id && linkedPatientId && p.caller_id !== linkedPatientId) return;
+
+        setIncomingCall({
+          callId: p.call_id,
+          callerName: p.caller_name || patientName,
+          callerRole: p.caller_role || "Người bệnh",
+          callerAvatar: p.caller_avatar || patientInfo?.avatar_url,
+          isSOS: p.is_sos,
+        });
+      })
+      .on('broadcast', { event: 'CALL_ENDED' }, (event) => {
+        if (incomingCall && event.payload?.call_id === incomingCall.callId) {
+          setIncomingCall(null);
+        }
+      })
+      .on('broadcast', { event: 'CALL_REJECTED' }, (event) => {
+        if (incomingCall && event.payload?.call_id === incomingCall.callId) {
+          setIncomingCall(null);
         }
       })
       .on('broadcast', { event: 'UNKNOWN_MED_TAKEN' }, (event) => {
@@ -79,7 +176,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [linkedPatientId]);
+  }, [linkedPatientId, user?.id, patientName, patientInfo, incomingCall]);
 
   return (
     <div className="w-full flex flex-col min-h-screen relative bg-[#F4F7FB] font-sans">
@@ -90,18 +187,40 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         onDismiss={() => setSosAlert(null)}
         onOpenCall={() => {
           setSosAlert(null);
-          setIsCallOpen(true);
+          handleStartCall({ isSOS: true });
         }}
       />
 
-      {/* Modals */}
-      <CallModal
-        isOpen={isCallOpen}
-        onClose={() => setIsCallOpen(false)}
-        patientName={patientName}
-        patientPhone={patientPhone}
-        reminderNote="Gọi nhắc uống thuốc"
-      />
+      {/* Modal Cuộc gọi đến toàn cục */}
+      {incomingCall && (
+        <IncomingCallModal
+          isOpen={!!incomingCall}
+          callerName={incomingCall.callerName}
+          callerRole={incomingCall.callerRole}
+          callerAvatar={incomingCall.callerAvatar}
+          isSOS={incomingCall.isSOS}
+          onAccept={handleAcceptIncomingCall}
+          onDecline={handleDeclineIncomingCall}
+        />
+      )}
+
+      {/* Modal Đang thoại / Gọi đi hai chiều */}
+      {activeCall && (
+        <CallModal
+          isOpen={!!activeCall}
+          onClose={() => setActiveCall(null)}
+          currentUser={user}
+          targetId={linkedPatientId || undefined}
+          callId={activeCall.callId}
+          contactName={activeCall.contactName}
+          contactRole={activeCall.contactRole}
+          contactPhone={activeCall.contactPhone}
+          avatarUrl={activeCall.avatarUrl}
+          isSOS={activeCall.isSOS}
+          initialVideo={activeCall.initialVideo}
+          isInitiator={activeCall.isInitiator}
+        />
+      )}
 
       <ScanPrescriptionModal
         isOpen={isScanOpen}
@@ -125,7 +244,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         {activeTab === "dashboard" && (
           <CaregiverDashboard
             user={user}
-            onOpenCall={() => setIsCallOpen(true)}
+            onOpenCall={() => handleStartCall()}
             onOpenScan={() => setIsScanOpen(true)}
             onOpenAddMed={() => setIsAddMedOpen(true)}
             onNavigateTab={(tab) => setActiveTab(tab as any)}
@@ -133,7 +252,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         )}
         {activeTab === "meds" && (
           <CaregiverMedsScreen
-            onOpenCall={() => setIsCallOpen(true)}
+            onOpenCall={() => handleStartCall()}
             onOpenScan={() => setIsScanOpen(true)}
             onOpenAddMed={() => setIsAddMedOpen(true)}
           />
@@ -141,7 +260,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         {activeTab === "family" && <CaregiverFamilyScreen user={user} />}
         {activeTab === "notifications" && (
           <NotificationsScreen
-            onOpenCall={() => setIsCallOpen(true)}
+            onOpenCall={() => handleStartCall()}
           />
         )}
         {activeTab === "reports" && <AIReportScreen />}

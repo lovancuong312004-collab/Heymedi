@@ -17,6 +17,7 @@ export default function FamilyScreen({ user }: Props) {
   const [familyMembers, setFamilyMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [callingContact, setCallingContact] = useState<{
+    id?: string;
     name: string;
     role?: string;
     phone?: string;
@@ -219,6 +220,7 @@ export default function FamilyScreen({ user }: Props) {
                 avatarUrl={member.avatar_url}
                 initial={member.initial}
                 onCall={() => setCallingContact({
+                  id: member.id,
                   name: member.name,
                   role: member.role,
                   phone: member.phone || "0901 234 567",
@@ -251,16 +253,19 @@ export default function FamilyScreen({ user }: Props) {
         contactName="Người thân chăm sóc"
       />
 
-      {/* Modal Gọi điện mô phỏng Hackathon */}
+      {/* Modal Gọi điện realtime hai chiều */}
       {callingContact && (
         <CallModal
           isOpen={!!callingContact}
           onClose={() => setCallingContact(null)}
+          currentUser={user}
+          targetId={callingContact.id}
           contactName={callingContact.name}
           contactRole={callingContact.role}
           contactPhone={callingContact.phone}
           avatarUrl={callingContact.avatarUrl}
           isSOS={callingContact.isSOS}
+          isInitiator={true}
         />
       )}
 

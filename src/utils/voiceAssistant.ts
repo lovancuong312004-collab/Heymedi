@@ -84,7 +84,7 @@ export const silentAudioUnlock = () => {
 };
 
 /**
- * Còi hú cấp cứu SOS cho Caregiver
+ * Còi hú cấp cứu SOS cho Caregiver (đã điều chỉnh âm lượng vừa phải, êm tai)
  * Trả về hàm stop() để dừng còi hú
  */
 export const startSirenAlarm = () => {
@@ -96,15 +96,16 @@ export const startSirenAlarm = () => {
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
 
-    oscillator.type = 'sawtooth';
-    gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
+    // Sóng sine êm dịu, âm lượng giảm xuống 0.08 vừa tai không gây chói tai
+    oscillator.type = 'sine';
+    gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
 
     const now = audioCtx.currentTime;
-    // Modulate siren between 600Hz and 1200Hz for 60 seconds
+    // Dao động tần số êm ái giữa 520Hz và 850Hz
     for (let i = 0; i < 75; i++) {
-      oscillator.frequency.setValueAtTime(600, now + i * 0.8);
-      oscillator.frequency.exponentialRampToValueAtTime(1200, now + i * 0.8 + 0.4);
-      oscillator.frequency.exponentialRampToValueAtTime(600, now + i * 0.8 + 0.8);
+      oscillator.frequency.setValueAtTime(520, now + i * 1.0);
+      oscillator.frequency.exponentialRampToValueAtTime(850, now + i * 1.0 + 0.5);
+      oscillator.frequency.exponentialRampToValueAtTime(520, now + i * 1.0 + 1.0);
     }
 
     oscillator.connect(gainNode);
@@ -121,6 +122,56 @@ export const startSirenAlarm = () => {
   } catch (e) {
     console.error("Failed to start siren alarm:", e);
     return () => {};
+  }
+};
+
+/**
+ * Chuông reo cuộc gọi đến (Ringtone điện thoại du dương)
+ * Trả về hàm stop() để dừng chuông
+ */
+export const startRingtone = () => {
+  let isPlaying = true;
+  let intervalId: any;
+
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+
+    const playChime = () => {
+      if (!isPlaying) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0.07, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.2);
+
+        // Chime double tone
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.3); // A5
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 1.3);
+      } catch (e) {}
+    };
+
+    playChime();
+    intervalId = setInterval(playChime, 2500);
+
+    return () => {
+      isPlaying = false;
+      if (intervalId) clearInterval(intervalId);
+    };
+  } catch (e) {
+    console.warn("Ringtone failed:", e);
+    return () => {
+      isPlaying = false;
+      if (intervalId) clearInterval(intervalId);
+    };
   }
 };
 

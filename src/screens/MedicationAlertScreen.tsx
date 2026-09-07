@@ -72,50 +72,50 @@ export default function MedicationAlertScreen({ medicine, onTaken, onSnooze }: P
       )}
 
       {/* 1. Header with Bell and Time */}
-      <div className="flex flex-col items-center gap-0 w-full mb-3 mt-2">
-        <div className="w-16 h-16 rounded-full bg-[#FF5C39] flex items-center justify-center shadow-lg mb-3">
-          <Bell className="text-white fill-white" size={32} style={{ animation: "ring 1s ease-in-out infinite" }} />
+      <div className="flex flex-col items-center gap-0 w-full mb-3 mt-1">
+        <div className="w-14 h-14 rounded-full bg-[#FF5C39] flex items-center justify-center shadow-md mb-2">
+          <Bell className="text-white fill-white" size={26} style={{ animation: "ring 1s ease-in-out infinite" }} />
         </div>
         
-        <h1 className="text-[32px] font-black text-[#E11D1D] leading-[1.1] text-center mb-3 tracking-tight uppercase">
-          Đến giờ<br />uống thuốc!
+        <h1 className="text-2xl font-black text-[#E11D1D] leading-tight text-center mb-2 tracking-tight uppercase">
+          Đến giờ uống thuốc!
         </h1>
         
-        <p className="text-[#0B1B47] font-bold text-sm">Giờ uống</p>
-        <p className="text-[56px] font-black text-[#0B1B47] leading-none mt-1 tracking-tighter">
+        <p className="text-[#0B1B47] font-semibold text-xs">Giờ uống theo lịch</p>
+        <p className="text-4xl font-black text-[#0B1B47] leading-none mt-1 tracking-tight">
           {medicine.time}
         </p>
       </div>
 
       {/* 2. Pill Info */}
-      <div className="flex flex-col items-center w-full mb-4">
+      <div className="flex flex-col items-center w-full mb-3">
         {photoPreview ? (
-          <div className="w-36 h-36 rounded-2xl overflow-hidden shadow-md border-2 border-emerald-500 relative mb-3">
+          <div className="w-32 h-32 rounded-2xl overflow-hidden shadow-md border-2 border-emerald-500 relative mb-2">
             <img src={photoPreview} alt="Ảnh thuốc" className="w-full h-full object-cover" />
             {isVerifying && (
               <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white p-2">
-                <Loader2 size={24} className="animate-spin text-emerald-400 mb-1" />
+                <Loader2 size={22} className="animate-spin text-emerald-400 mb-1" />
                 <span className="text-[11px] font-bold">AI đang đối chiếu ảnh thuốc...</span>
               </div>
             )}
             {verificationResult && (
               <div className="absolute inset-0 bg-emerald-700/85 backdrop-blur-xs flex flex-col items-center justify-center text-white p-2 animate-fade-in">
-                <CheckCircle2 size={28} className="text-white mb-1" />
+                <CheckCircle2 size={26} className="text-white mb-1" />
                 <span className="text-[11px] font-bold text-center">{verificationResult}</span>
               </div>
             )}
           </div>
         ) : (
-          <div className="w-32 h-32 rounded-full bg-[#FCE8E6] flex items-center justify-center shadow-inner relative mb-3">
-            <div className="w-[76px] h-[76px] bg-white rounded-full shadow-[0_8px_15px_rgba(0,0,0,0.15)] border border-gray-100 flex items-center justify-center relative overflow-hidden">
-              <span className="text-4xl">💊</span>
+          <div className="w-24 h-24 rounded-full bg-[#FCE8E6] flex items-center justify-center shadow-inner relative mb-2">
+            <div className="w-16 h-16 bg-white rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.1)] border border-gray-100 flex items-center justify-center relative overflow-hidden">
+              <span className="text-3xl">💊</span>
             </div>
           </div>
         )}
         
-        <p className="text-primary font-bold text-xs uppercase tracking-widest mb-1">Tên thuốc</p>
-        <h2 className="text-[32px] font-black text-[#0B1B47] mb-1.5 leading-none text-center px-4">{medicine.name}</h2>
-        <p className="text-[#3b476b] text-base font-semibold bg-[#EBF1FF] px-4 py-1.5 rounded-full">{medicine.dosage} • {medicine.instruction}</p>
+        <p className="text-primary font-bold text-[11px] uppercase tracking-widest mb-0.5">Tên thuốc</p>
+        <h2 className="text-2xl font-black text-[#0B1B47] mb-1 leading-snug text-center px-4">{medicine.name}</h2>
+        <p className="text-[#3b476b] text-sm font-semibold bg-[#EBF1FF] px-3.5 py-1 rounded-full">{medicine.dosage} • {medicine.instruction}</p>
       </div>
 
       {/* Hidden file input for capturing pill proof */}
