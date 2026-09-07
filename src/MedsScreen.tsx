@@ -12,6 +12,7 @@ import {
   CalendarCheck,
   Camera,
   Volume2,
+  Square,
   X,
   AlertCircle
 } from "lucide-react";
@@ -21,7 +22,7 @@ import AddMedModal from "./caregiver/AddMedModal";
 import ScanUnknownMedModal from "./screens/ScanUnknownMedModal";
 import ElderlyCameraCaptureModal from "./components/ElderlyCameraCaptureModal";
 import { cleanMedicineTitle } from "./utils/geminiVision";
-import { speakVietnamese } from "./utils/voiceAssistant";
+import { speakVietnamese, stopSpeech, isSpeaking } from "./utils/voiceAssistant";
 import { 
   getScheduleByDate, 
   getScheduleDaysSummary, 
@@ -57,6 +58,14 @@ export default function MedsScreen({ user }: Props) {
   const [daysSummary, setDaysSummary] = useState<Record<string, { count: number; allTaken: boolean; hasPending: boolean }>>({});
   const [loading, setLoading] = useState(true);
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [speakingKey, setSpeakingKey] = useState<string | null>(null);
+
+  // Dừng mọi giọng đọc khi component unmount hoặc rời màn hình
+  useEffect(() => {
+    return () => {
+      stopSpeech();
+    };
+  }, []);
 
   // Khởi tạo dải ngày trong tuần (Từ 3 ngày trước đến 10 ngày tới)
   const dateStrip = useMemo(() => {
@@ -271,6 +280,19 @@ export default function MedsScreen({ user }: Props) {
     return groups;
   }, [filteredMeds]);
 
+  const handleToggleSpeaking = (key: string, text: string) => {
+    if (speakingKey === key && isSpeaking()) {
+      stopSpeech();
+      setSpeakingKey(null);
+      return;
+    }
+    stopSpeech();
+    setSpeakingKey(key);
+    speakVietnamese(text, {
+      onEnd: () => setSpeakingKey(null)
+    });
+  };
+
   return (
     <>
       <AddMedModal 
@@ -473,6 +495,8 @@ export default function MedsScreen({ user }: Props) {
                     onConfirmSingleMed={(medId) => handleConfirmTaken(medId)}
                     onViewMedPhoto={(med) => setViewingMedPhoto(med)}
                     isMarkingId={markingId}
+                    speakingKey={speakingKey}
+                    onToggleSpeaking={handleToggleSpeaking}
                   />
                 ))}
               </div>
@@ -634,7 +658,9 @@ function DoseSessionCard({
   onTakeSessionPhoto,
   onConfirmSingleMed,
   onViewMedPhoto,
-  isMarkingId
+  isMarkingId,
+  speakingKey,
+  onToggleSpeaking
 }: {
   session: DoseSessionGroup;
   isTodaySelected: boolean;
@@ -643,6 +669,8 @@ function DoseSessionCard({
   onConfirmSingleMed: (medId: string) => void;
   onViewMedPhoto?: (med: { name: string; imageUrl?: string | null; dosage?: string; instruction?: string }) => void;
   isMarkingId: string | null;
+  speakingKey: string | null;
+  onToggleSpeaking: (key: string, text: string) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(!session.isAllTaken);
   const isDone = session.isAllTaken;
@@ -657,15 +685,7 @@ function DoseSessionCard({
     return now.getTime() - scheduledTime.getTime() > 15 * 60000;
   }, [isDone, isTodaySelected, session.timeStr]);
 
-  const handleSpeakSession = () => {
-    const cleanNames = session.items.map(m => cleanMedicineTitle(m.medication?.name || "Thuốc")).join(", ");
-    speakVietnamese(`Đến ${session.mealLabel} lúc ${session.timeStr}. Cữ này gồm ${session.items.length} loại thuốc: ${cleanNames}. Bác nhớ kiểm tra đủ thuốc rồi uống nhé!`);
-  };
-
-  const handleSpeakPill = (med: Reminder) => {
-    const cleanName = cleanMedicineTitle(med.medication?.name || "Thuốc");
-    speakVietnamese(`Thuốc ${cleanName}, liều lượng ${med.medication?.dosage || "1 liều"}, ${med.medication?.instructions?.split('|')[0]?.trim() || "uống theo đơn"}.`);
-  };
+  const isSessionSpeaking = speakingKey === `session_${session.timeStr}` && isSpeaking();
 
   return (
     <div className={cn(
@@ -706,7 +726,8 @@ function DoseSessionCard({
 
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
-              <h3 className="text-base font-black text-[#1a2b4b] truncate">{session.mealLabel}</h3>
+              {/* SỬA LỖI TRUNCATE: Dùng whitespace-nowrap shrink-0 để không bao giờ bị cắt thành 'C...' */}
+              <h3 className="text-base font-black text-[#1a2b4b] whitespace-nowrap shrink-0">{session.mealLabel}</h3>
               <span className={cn("text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0", theme.chipBg)}>
                 {session.items.length} loại thuốc
               </span>
@@ -754,12 +775,19 @@ function DoseSessionCard({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                handleSpeakSession();
+                const cleanNames = session.items.map(m => cleanMedicineTitle(m.medication?.name || "Thuốc")).join(", ");
+                const text = `Đến ${session.mealLabel} lúc ${session.timeStr}. Cữ này gồm ${session.items.length} loại thuốc: ${cleanNames}. Bác nhớ kiểm tra đủ thuốc rồi uống nhé!`;
+                onToggleSpeaking(`session_${session.timeStr}`, text);
               }}
-              className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200 active:scale-95 transition-all cursor-pointer"
+              className={cn(
+                "inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border active:scale-95 transition-all cursor-pointer",
+                isSessionSpeaking 
+                  ? "bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100" 
+                  : "text-primary hover:text-blue-700 bg-blue-50 border-blue-200"
+              )}
             >
-              <Volume2 size={13} />
-              <span>AI đọc cả cữ</span>
+              {isSessionSpeaking ? <Square size={11} className="fill-rose-600 text-rose-600" /> : <Volume2 size={13} />}
+              <span>{isSessionSpeaking ? "Dừng đọc" : "AI đọc cả cữ"}</span>
             </button>
           </div>
 
@@ -768,6 +796,7 @@ function DoseSessionCard({
               const medDone = med.status === 'taken';
               const cleanName = cleanMedicineTitle(med.medication?.name || "Thuốc");
               const isMarking = isMarkingId === med.id;
+              const isPillSpeaking = speakingKey === `pill_${med.id}` && isSpeaking();
 
               return (
                 <div 
@@ -818,11 +847,17 @@ function DoseSessionCard({
                         </h4>
                         <button
                           type="button"
-                          onClick={() => handleSpeakPill(med)}
-                          className="text-primary hover:text-blue-700 p-0.5 active:scale-90 transition-transform cursor-pointer"
-                          title="Bấm để nghe AI đọc"
+                          onClick={() => {
+                            const text = `Thuốc ${cleanName}, liều lượng ${med.medication?.dosage || "1 liều"}, ${med.medication?.instructions?.split('|')[0]?.trim() || "uống theo đơn"}.`;
+                            onToggleSpeaking(`pill_${med.id}`, text);
+                          }}
+                          className={cn(
+                            "p-1 rounded-lg active:scale-90 transition-all cursor-pointer",
+                            isPillSpeaking ? "text-rose-600 bg-rose-50" : "text-primary hover:text-blue-700 hover:bg-blue-50"
+                          )}
+                          title={isPillSpeaking ? "Bấm để dừng đọc" : "Bấm để nghe AI đọc"}
                         >
-                          <Volume2 size={14} />
+                          {isPillSpeaking ? <Square size={12} className="fill-rose-600 text-rose-600" /> : <Volume2 size={14} />}
                         </button>
                       </div>
                       <p className="text-xs font-bold text-primary truncate">

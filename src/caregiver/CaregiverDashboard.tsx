@@ -20,7 +20,7 @@ export default function CaregiverDashboard({
   onOpenCall,
   onNavigateTab,
   onOpenAddMed,
-  onOpenScan
+  onOpenScan: _onOpenScan
 }: Props) {
   const caregiverName = user?.user_metadata?.full_name || "Caregiver";
   
@@ -167,7 +167,11 @@ export default function CaregiverDashboard({
     <div className="p-5 flex flex-col gap-4 pb-24">
       {/* 1. Header (User Profile & Switcher) */}
       <div className="flex items-center justify-between mt-2">
-        <div className="flex items-center gap-3">
+        <div 
+          onClick={() => onNavigateTab("settings")}
+          className="flex items-center gap-3 cursor-pointer hover:opacity-90 transition-opacity"
+          title="Chạm để mở Cài đặt người chăm sóc"
+        >
           <div className="w-10 h-10 rounded-full overflow-hidden bg-emerald-100 border-2 border-white shadow-sm shrink-0 flex items-center justify-center font-bold text-emerald-800 text-sm">
             {user?.user_metadata?.avatar_url ? (
               <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
@@ -278,13 +282,12 @@ export default function CaregiverDashboard({
         </div>
       )}
 
-      {/* 4. Quick Action Row */}
-      <div className="flex gap-3">
-        {/* Thêm thuốc cho người thân */}
-        <div 
-          onClick={onOpenAddMed}
-          className="flex-[2] bg-white rounded-2xl p-4 flex items-center gap-3.5 border border-gray-100 shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
-        >
+      {/* 4. Quick Action */}
+      <div 
+        onClick={onOpenAddMed}
+        className="w-full bg-white rounded-2xl p-4 flex items-center justify-between border border-gray-100 shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
+      >
+        <div className="flex items-center gap-3.5">
           <div className="w-12 h-12 bg-primary rounded-xl text-white flex items-center justify-center shadow-sm shrink-0">
             <Plus size={24} strokeWidth={2.5} />
           </div>
@@ -292,18 +295,10 @@ export default function CaregiverDashboard({
             <h3 className="text-[#1a2b4b] font-bold text-sm leading-tight truncate">
               Thêm thuốc cho {patientInfo?.name || 'người thân'}
             </h3>
-            <p className="text-gray-400 text-xs mt-1 leading-tight">Cài đặt giờ nhắc & liều lượng</p>
+            <p className="text-gray-400 text-xs mt-1 leading-tight">Cài đặt cữ nhắc, lộ trình & liều lượng</p>
           </div>
         </div>
-
-        {/* Quét AI */}
-        <div 
-          onClick={onOpenScan}
-          className="flex-[1] bg-[#EBF1FF] rounded-2xl p-3 flex flex-col items-center justify-center gap-1 border border-blue-100 shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
-        >
-          <Scan className="text-primary" size={26} strokeWidth={2.5} />
-          <span className="text-primary font-bold text-xs text-center leading-tight">Quét AI</span>
-        </div>
+        <ChevronRight size={18} className="text-gray-400 shrink-0" />
       </div>
 
       {/* 5. Timeline Today */}
@@ -352,15 +347,17 @@ export default function CaregiverDashboard({
                     )}
                   </div>
 
-                  <div>
+                  <div className="min-w-0 pr-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-[#1a2b4b] font-bold text-sm">{item.medication?.name || "Thuốc"}</span>
-                      <span className="text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full font-bold">
+                      <span className="text-[#1a2b4b] font-bold text-sm truncate max-w-[170px] sm:max-w-xs">
+                        {cleanMedicineTitle(item.medication?.name || "Thuốc")}
+                      </span>
+                      <span className="text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full font-bold shrink-0">
                         {scheduledTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-                    <p className="text-gray-500 text-xs mt-0.5">
-                      {item.medication?.dosage ? `${item.medication.dosage} • ` : ""}{item.medication?.instructions || "Theo chỉ dẫn"}
+                    <p className="text-gray-500 text-xs mt-0.5 truncate max-w-[210px] sm:max-w-xs">
+                      {item.medication?.dosage ? `${item.medication.dosage} • ` : ""}{item.medication?.instructions?.split('|')[0] || "Theo chỉ dẫn"}
                     </p>
                   </div>
                 </div>

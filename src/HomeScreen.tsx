@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calendar, Volume2, Scan, AlertCircle, Loader2, Clock, CheckCircle2 } from "lucide-react";
+import { Calendar, Volume2, Scan, AlertCircle, Loader2, Clock, CheckCircle2, ChevronRight } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import SOSModal from "./screens/SOSModal";
 import MedicationAlertScreen, { type DoseSessionAlert } from "./screens/MedicationAlertScreen";
@@ -416,28 +416,41 @@ export default function HomeScreen({
           </div>
         </div>
 
-        {/* SOS + AI Scan Row */}
-        <div className="flex gap-3 mt-auto pt-1">
-          <div 
-            onClick={() => setIsSOSOpen(true)}
-            className="flex-[3] bg-[#FFF0F0] rounded-2xl p-3.5 flex items-center gap-3 border border-[#FFD6D6] shadow-sm cursor-pointer active:scale-[0.98] transition-all select-none"
-          >
-            <div className="w-11 h-11 bg-danger rounded-xl text-white flex flex-col items-center justify-center shadow-sm shrink-0">
-              <AlertCircle size={22} strokeWidth={2.5} />
-              <span className="text-[9px] font-bold mt-0.5 leading-none">SOS</span>
-            </div>
-            <div>
-              <h3 className="text-danger font-bold text-sm leading-tight">SOS khẩn cấp</h3>
-              <p className="text-danger/80 text-xs mt-0.5 leading-tight">Gọi người thân ngay lập tức</p>
-            </div>
-          </div>
-
+        {/* Thao tác Uống thuốc ngoài đơn & SOS Cấp Cứu */}
+        <div className="flex flex-col gap-2.5 mt-auto pt-2">
+          {/* Uống thuốc ngoài đơn (AI kiểm tra an toàn) */}
           <div 
             onClick={() => setIsScanUnknownOpen(true)}
-            className="flex-[1] bg-[#EBF1FF] hover:bg-blue-100 rounded-2xl flex flex-col items-center justify-center border border-blue-100 shadow-sm cursor-pointer active:scale-[0.98] transition-all p-2 select-none"
+            className="w-full bg-[#EBF1FF] hover:bg-[#E0EBFF] rounded-2xl p-3.5 flex items-center justify-between border border-[#D1E0FF] shadow-xs cursor-pointer active:scale-[0.98] transition-all select-none"
           >
-            <Scan className="text-primary mb-1" size={24} />
-            <span className="text-primary font-bold text-[11px] text-center leading-tight">Quét AI</span>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Scan size={20} strokeWidth={2.5} />
+              </div>
+              <div>
+                <h4 className="font-black text-xs sm:text-sm text-[#1a2b4b]">UỐNG THUỐC NGOÀI ĐƠN</h4>
+                <p className="text-[11px] text-gray-500 font-medium">Kiểm tra an toàn & tương tác bệnh nền</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-primary shrink-0" />
+          </div>
+
+          {/* Nút SOS Cấp Cứu Nổi Bật Toàn Chiều Rộng */}
+          <div 
+            onClick={() => setIsSOSOpen(true)}
+            className="w-full bg-[#FFF0F0] hover:bg-[#FFE5E5] rounded-2xl p-3.5 flex items-center justify-between border-2 border-red-200 shadow-sm cursor-pointer active:scale-[0.98] transition-all select-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-danger rounded-xl text-white flex flex-col items-center justify-center shadow-md shadow-danger/25 shrink-0">
+                <AlertCircle size={22} strokeWidth={2.5} />
+                <span className="text-[9px] font-black mt-0.5 leading-none">SOS</span>
+              </div>
+              <div>
+                <h3 className="text-danger font-black text-sm sm:text-base leading-tight">SOS CẤP CỨU KHẨN CẤP</h3>
+                <p className="text-danger/80 text-xs mt-0.5 leading-tight font-medium">Hú còi & gọi video người thân ngay lập tức</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-danger shrink-0" />
           </div>
         </div>
       </div>

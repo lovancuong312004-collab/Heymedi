@@ -30,9 +30,10 @@ export interface SpeakOptions {
   speed?: number;
   pitch?: number;
   volume?: number;
+  onEnd?: () => void;
 }
 
-export const getSavedVoiceSettings = (): Required<SpeakOptions> => {
+export const getSavedVoiceSettings = (): Required<Omit<SpeakOptions, 'onEnd'>> => {
   try {
     const saved = localStorage.getItem('heymedi_voice_settings');
     if (saved) {
@@ -54,11 +55,28 @@ export const getSavedVoiceSettings = (): Required<SpeakOptions> => {
 };
 
 let currentAudio: HTMLAudioElement | null = null;
+let currentOnEndCallback: (() => void) | null = null;
+let speakingFlag = false;
+
+export const isSpeaking = (): boolean => {
+  if (currentAudio && !currentAudio.paused && !currentAudio.ended) {
+    return true;
+  }
+  if ('speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
+    return true;
+  }
+  return speakingFlag;
+};
 
 export const stopSpeech = () => {
+  speakingFlag = false;
+  const cb = currentOnEndCallback;
+  currentOnEndCallback = null;
+
   if (currentAudio) {
     try {
       currentAudio.pause();
+      currentAudio.currentTime = 0;
       currentAudio.src = '';
     } catch {}
     currentAudio = null;
@@ -66,6 +84,12 @@ export const stopSpeech = () => {
   if ('speechSynthesis' in window) {
     try {
       window.speechSynthesis.cancel();
+    } catch {}
+  }
+
+  if (cb) {
+    try {
+      cb();
     } catch {}
   }
 };
@@ -77,9 +101,12 @@ export const speakVietnamese = (text: string, options?: SpeakOptions) => {
   const voiceId = options?.voiceId || saved.voiceId;
   const speed = options?.speed ?? saved.speed;
   const volume = Math.max(0.1, Math.min(1.0, (options?.volume ?? saved.volume) / 100));
+  currentOnEndCallback = options?.onEnd || null;
 
   const cleanText = text.trim();
   if (!cleanText) return;
+
+  speakingFlag = true;
 
   // Cấu hình âm sắc và tốc độ riêng biệt cho từng giọng đọc
   let playbackRate = speed;
@@ -103,6 +130,18 @@ export const speakVietnamese = (text: string, options?: SpeakOptions) => {
     preservesPitch = true;
   }
 
+  const handleFinish = () => {
+    speakingFlag = false;
+    currentAudio = null;
+    const cb = currentOnEndCallback;
+    currentOnEndCallback = null;
+    if (cb) {
+      try {
+        cb();
+      } catch {}
+    }
+  };
+
   // Phương thức 1: Online Google Vietnamese TTS Audio Engine kết hợp Browser Pitch Shifter
   // Tạo ra sự khác biệt âm thanh RÕ RỆT giữa Nam / Nữ và vùng miền
   if (cleanText.length < 200) {
@@ -118,6 +157,11 @@ export const speakVietnamese = (text: string, options?: SpeakOptions) => {
       (audio as any).mozPreservesPitch = preservesPitch;
       (audio as any).webkitPreservesPitch = preservesPitch;
 
+      audio.onended = handleFinish;
+      audio.onerror = () => {
+        fallbackToSpeechSynthesis(cleanText, voiceId, speed, volume, handleFinish);
+      };
+
       let hasStarted = false;
       const playPromise = audio.play();
       if (playPromise !== undefined) {
@@ -127,7 +171,7 @@ export const speakVietnamese = (text: string, options?: SpeakOptions) => {
           })
           .catch(() => {
             if (!hasStarted) {
-              fallbackToSpeechSynthesis(cleanText, voiceId, speed, volume);
+              fallbackToSpeechSynthesis(cleanText, voiceId, speed, volume, handleFinish);
             }
           });
         return;
@@ -138,12 +182,14 @@ export const speakVietnamese = (text: string, options?: SpeakOptions) => {
   }
 
   // Phương thức 2: Fallback Web Speech Synthesis
-  fallbackToSpeechSynthesis(cleanText, voiceId, speed, volume);
+  fallbackToSpeechSynthesis(cleanText, voiceId, speed, volume, handleFinish);
 };
 
-function fallbackToSpeechSynthesis(text: string, voiceId: string, speed: number, volume: number) {
+function fallbackToSpeechSynthesis(text: string, voiceId: string, speed: number, volume: number, onEnd?: () => void) {
   if (!('speechSynthesis' in window)) {
     console.warn("Trình duyệt không hỗ trợ Web Speech API.");
+    speakingFlag = false;
+    onEnd?.();
     return;
   }
 
@@ -154,6 +200,15 @@ function fallbackToSpeechSynthesis(text: string, voiceId: string, speed: number,
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'vi-VN';
   utterance.volume = volume;
+
+  utterance.onend = () => {
+    speakingFlag = false;
+    onEnd?.();
+  };
+  utterance.onerror = () => {
+    speakingFlag = false;
+    onEnd?.();
+  };
 
   if (voiceId === 'male_north') {
     utterance.pitch = 0.75;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Home, Pill, Users, Settings } from "lucide-react";
+import { Home, Pill, Users, Settings, Scan } from "lucide-react";
 import { cn } from "./lib/utils";
 import HomeScreen from "./HomeScreen";
 import MedsScreen from "./MedsScreen";
@@ -7,7 +7,8 @@ import FamilyScreen from "./FamilyScreen";
 import SettingsScreen from "./SettingsScreen";
 import IncomingCallModal from "./components/IncomingCallModal";
 import CallModal from "./caregiver/CallModal";
-import { silentAudioUnlock } from "./utils/voiceAssistant";
+import ScanUnknownMedModal from "./screens/ScanUnknownMedModal";
+import { silentAudioUnlock, stopSpeech } from "./utils/voiceAssistant";
 import { recordMissedCall } from "./services/missedCallService";
 import { realtimeBridge } from "./services/realtimeBridge";
 import { supabase } from "./lib/supabase";
@@ -23,6 +24,12 @@ type ElderlyTab = "home" | "meds" | "family" | "settings";
 export default function ElderlyApp({ user, onLogout }: Props) {
   const { t } = useSettings();
   const [activeTab, setActiveTab] = useState<ElderlyTab>("home");
+  const [isScanOpen, setIsScanOpen] = useState(false);
+
+  // Tự động ngắt giọng đọc AI ngay khi người già đổi tab
+  useEffect(() => {
+    stopSpeech();
+  }, [activeTab]);
 
   // Realtime Pill Verification Mode (Cấu hình minh chứng ảnh uống thuốc từ người chăm sóc)
   const [verificationMode, setVerificationMode] = useState<'photo_required' | 'simple_only' | 'both'>(() => {
@@ -289,6 +296,13 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         />
       )}
 
+      {/* Modal Quét Thuốc Ngoài Đơn / Mã QR cho Người Già */}
+      <ScanUnknownMedModal
+        isOpen={isScanOpen}
+        onClose={() => setIsScanOpen(false)}
+        user={user}
+      />
+
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto pb-6 min-h-0 overscroll-contain">
         {activeTab === "home" && (
@@ -303,10 +317,25 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         {activeTab === "settings" && <SettingsScreen user={user} onLogout={onLogout} />}
       </div>
 
-      {/* Bottom Navigation: GHIM CỐ ĐỊNH Ở ĐÁY KHÔNG BAO GIỜ BỊ ĐẨY MẤT */}
-      <div className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-100 px-2 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
+      {/* Bottom Navigation: GHIM CỐ ĐỊNH Ở ĐÁY VỚI NÚT QUÉT QR NỔI Ở GIỮA */}
+      <div className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-100 px-2 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40 relative">
         <NavItem icon={<Home size={22} />} label={t("nav.home")} isActive={activeTab === "home"} onClick={() => setActiveTab("home")} />
         <NavItem icon={<Pill size={22} />} label={t("nav.meds")} isActive={activeTab === "meds"} onClick={() => setActiveTab("meds")} />
+
+        {/* Nút Quét AI Nổi Bật Chính Giữa */}
+        <button
+          type="button"
+          onClick={() => setIsScanOpen(true)}
+          className="relative -top-4 flex flex-col items-center justify-center cursor-pointer group select-none transition-transform active:scale-90"
+        >
+          <div className="w-13 h-13 rounded-full bg-gradient-to-tr from-primary via-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-primary/35 border-4 border-white group-hover:scale-105 transition-all">
+            <Scan size={24} strokeWidth={2.5} />
+          </div>
+          <span className="text-[10px] font-black text-primary mt-0.5 tracking-tight">
+            Quét AI
+          </span>
+        </button>
+
         <NavItem icon={<Users size={22} />} label={t("nav.family")} isActive={activeTab === "family"} onClick={() => setActiveTab("family")} />
         <NavItem icon={<Settings size={22} />} label={t("nav.settings")} isActive={activeTab === "settings"} onClick={() => setActiveTab("settings")} />
       </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { 
   Plus, 
   Calendar as CalendarIcon, 
@@ -16,7 +16,8 @@ import {
   HeartPulse,
   ShieldCheck,
   Camera,
-  Check,
+  UploadCloud,
+  Check, 
   ChevronDown,
   ChevronUp,
   X
@@ -118,6 +119,51 @@ export default function CaregiverMedsScreen({
 
   // Modal chụp ảnh vỉ thuốc riêng trong tab Lộ trình
   const [capturingMedPhoto, setCapturingMedPhoto] = useState<{ id: string; name: string } | null>(null);
+  const [uploadingMedPhotoId, setUploadingMedPhotoId] = useState<string | null>(null);
+  const [targetUploadMedId, setTargetUploadMedId] = useState<string | null>(null);
+  const fileInputMapRef = useRef<HTMLInputElement>(null);
+
+  const handleSelectMedPhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !targetUploadMedId) return;
+
+    try {
+      setUploadingMedPhotoId(targetUploadMedId);
+      const fileExt = file.name.split('.').pop() || 'jpg';
+      const fileName = `med_${targetUploadMedId}_${Date.now()}.${fileExt}`;
+      const { data, error } = await supabase.storage
+        .from('medication_images')
+        .upload(fileName, file, { upsert: true, contentType: file.type || 'image/jpeg' });
+
+      let finalUrl = "";
+      if (!error && data) {
+        const { data: publicUrlData } = supabase.storage
+          .from('medication_images')
+          .getPublicUrl(fileName);
+        finalUrl = publicUrlData.publicUrl;
+      } else {
+        finalUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+      }
+
+      await supabase
+        .from('medications')
+        .update({ image_url: finalUrl })
+        .eq('id', targetUploadMedId);
+
+      await Promise.all([loadCourseData(), loadData()]);
+    } catch (err) {
+      console.error("Lỗi tải ảnh từ máy:", err);
+      alert("Không thể tải ảnh lên. Vui lòng thử lại!");
+    } finally {
+      setUploadingMedPhotoId(null);
+      setTargetUploadMedId(null);
+      if (fileInputMapRef.current) fileInputMapRef.current.value = "";
+    }
+  };
 
   // Dải ngày chọn nhanh (Từ 3 ngày trước đến 10 ngày tới)
   const dateStrip = useMemo(() => {
@@ -781,14 +827,36 @@ export default function CaregiverMedsScreen({
                             {med.image_url ? "Người già sẽ nhìn thấy ảnh này khi chuông reo" : "Chụp để hiển thị trên màn hình người già"}
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setCapturingMedPhoto({ id: med.id, name: cleanMedicineTitle(med.name) })}
-                          className="inline-flex items-center gap-1 bg-white hover:bg-blue-50 text-primary border border-blue-200 px-2.5 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer shadow-2xs shrink-0"
-                        >
-                          <Camera size={13} />
-                          <span>{med.image_url ? "Đổi ảnh" : "Chụp vỉ"}</span>
-                        </button>
+                        {/* 2 Nút riêng biệt: Chụp bằng Camera & Tải ảnh từ máy */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setCapturingMedPhoto({ id: med.id, name: cleanMedicineTitle(med.name) })}
+                            className="inline-flex items-center gap-1 bg-white hover:bg-blue-50 text-primary border border-blue-200 px-2.5 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer shadow-2xs"
+                            title="Mở camera chụp ảnh trực tiếp"
+                          >
+                            <Camera size={13} />
+                            <span>Chụp vỉ</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={uploadingMedPhotoId === med.id}
+                            onClick={() => {
+                              setTargetUploadMedId(med.id);
+                              fileInputMapRef.current?.click();
+                            }}
+                            className="inline-flex items-center gap-1 bg-white hover:bg-gray-100 text-gray-700 border border-gray-200 px-2.5 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer shadow-2xs"
+                            title="Tải ảnh vỉ thuốc có sẵn từ máy"
+                          >
+                            {uploadingMedPhotoId === med.id ? (
+                              <Loader2 size={13} className="animate-spin text-primary" />
+                            ) : (
+                              <UploadCloud size={13} />
+                            )}
+                            <span>Tải ảnh</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Hướng dẫn & Ghi chú lộ trình */}
@@ -1109,6 +1177,51 @@ export default function CaregiverMedsScreen({
                 </div>
               </div>
 
+              {/* Hình ảnh vỉ thuốc thực tế */}
+              <div className="bg-gray-50 p-3 rounded-2xl border border-gray-200">
+                <label className="font-bold text-[#1a2b4b] block mb-1.5">Hình ảnh vỉ / hộp thuốc thực tế</label>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-12 h-12 rounded-xl bg-white border border-gray-200 overflow-hidden flex items-center justify-center shrink-0 shadow-2xs">
+                      {editingCourse.image_url ? (
+                        <img src={editingCourse.image_url} alt="Vỉ thuốc" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-xl">💊</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-[#1a2b4b] block">
+                        {editingCourse.image_url ? "Đã có ảnh thực tế" : "Chưa có ảnh thực tế"}
+                      </span>
+                      <span className="text-[10px] text-gray-500">Giúp người già nhìn rõ vỉ thuốc</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCapturingMedPhoto({ id: editingCourse.id, name: editName || editingCourse.name })}
+                      className="px-2.5 py-1.5 rounded-xl bg-white text-primary border border-blue-200 text-xs font-bold hover:bg-blue-50 cursor-pointer flex items-center gap-1 shadow-2xs"
+                    >
+                      <Camera size={13} />
+                      <span>Chụp</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={uploadingMedPhotoId === editingCourse.id}
+                      onClick={() => {
+                        setTargetUploadMedId(editingCourse.id);
+                        fileInputMapRef.current?.click();
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl bg-white text-gray-700 border border-gray-200 text-xs font-bold hover:bg-gray-100 cursor-pointer flex items-center gap-1 shadow-2xs"
+                    >
+                      {uploadingMedPhotoId === editingCourse.id ? <Loader2 size={13} className="animate-spin" /> : <UploadCloud size={13} />}
+                      <span>Tải ảnh</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* Số ngày lộ trình */}
               <div>
                 <label className="font-bold text-[#1a2b4b] block mb-1">Thời gian lộ trình tiếp tục</label>
@@ -1336,6 +1449,15 @@ export default function CaregiverMedsScreen({
         />
       )}
 
+      {/* Hidden file input để chọn ảnh vỉ thuốc từ máy */}
+      <input
+        type="file"
+        ref={fileInputMapRef}
+        accept="image/*"
+        onChange={handleSelectMedPhotoFile}
+        className="hidden"
+      />
+
     </div>
   );
 }
@@ -1414,7 +1536,7 @@ function CaregiverDoseSessionCard({
 
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 mb-0.5">
-              <span className="font-extrabold text-sm sm:text-base text-[#1a2b4b] truncate">{session.mealLabel}</span>
+              <span className="font-extrabold text-sm sm:text-base text-[#1a2b4b] whitespace-nowrap shrink-0">{session.mealLabel}</span>
               <span className={cn("text-[10px] font-bold px-2 py-0.2 rounded-full shrink-0", theme.chipBg)}>
                 {session.items.length} thuốc
               </span>
