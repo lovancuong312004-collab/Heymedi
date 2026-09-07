@@ -91,6 +91,7 @@ export default function CallModal({
   const [remoteIsVideo, setRemoteIsVideo] = useState(true);
   const [remoteIsMuted, setRemoteIsMuted] = useState(false);
   const [aiVoiceActive, setAiVoiceActive] = useState(false);
+  const [isAudioBlocked, setIsAudioBlocked] = useState(false);
 
   // WebRTC & Media Element Refs
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -164,6 +165,7 @@ export default function CallModal({
 
       localStreamRef.current = stream;
       if (localVideoRef.current) {
+        localVideoRef.current.muted = true;
         localVideoRef.current.srcObject = stream;
       }
       return stream;
@@ -255,11 +257,17 @@ export default function CallModal({
 
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
-          remoteVideoRef.current.play().catch(e => console.warn("Video play err:", e));
+          remoteVideoRef.current.play().catch(e => {
+            console.warn("Video play err:", e);
+            if (e.name === "NotAllowedError") setIsAudioBlocked(true);
+          });
         }
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = remoteStream;
-          remoteAudioRef.current.play().catch(e => console.warn("Audio play err:", e));
+          remoteAudioRef.current.play().catch(e => {
+            console.warn("Audio play err:", e);
+            if (e.name === "NotAllowedError") setIsAudioBlocked(true);
+          });
         }
         setHasRemoteStream(true);
       };
@@ -648,6 +656,17 @@ export default function CallModal({
     }, 500);
   };
 
+  const handleModalInteraction = () => {
+    if (isAudioBlocked) {
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.play().then(() => setIsAudioBlocked(false)).catch(() => {});
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.play().then(() => setIsAudioBlocked(false)).catch(() => {});
+      }
+    }
+  };
+
   if (!isOpen) return null;
 
   const formatTime = (secs: number) => {
@@ -659,11 +678,33 @@ export default function CallModal({
   const showVideoOverlay = callStatus === "connected" && isVideo;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in select-none">
+    <div 
+      onClick={handleModalInteraction}
+      onTouchStart={handleModalInteraction}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in select-none"
+    >
       <div className="w-full max-w-sm bg-gradient-to-b from-slate-900 via-slate-800 to-slate-950 text-white rounded-[36px] p-5 flex flex-col items-center justify-between min-h-[580px] shadow-2xl border border-white/10 relative overflow-hidden">
         
         {/* Glow effect */}
         <div className={`absolute top-0 w-48 h-48 rounded-full blur-3xl pointer-events-none ${isSOS ? "bg-rose-500/30" : "bg-emerald-500/20"}`} />
+
+        {/* Nút mở tiếng nếu Safari iOS chặn Autoplay Audio */}
+        {isAudioBlocked && (
+          <div className="absolute top-4 z-40 px-4 w-full flex justify-center animate-bounce">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (remoteAudioRef.current) remoteAudioRef.current.play();
+                if (remoteVideoRef.current) remoteVideoRef.current.play();
+                setIsAudioBlocked(false);
+              }}
+              className="bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black py-2.5 px-4 rounded-full shadow-2xl flex items-center gap-2 cursor-pointer border border-amber-500"
+            >
+              <Volume2 size={16} />
+              <span>Bấm vào đây để mở tiếng (Safari)</span>
+            </button>
+          </div>
+        )}
 
         {/* Remote Audio Track Player (Đảm bảo âm thanh đàm thoại 100% không bao giờ bị ngắt) */}
         <audio
