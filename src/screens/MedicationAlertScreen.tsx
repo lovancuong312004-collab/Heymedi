@@ -14,9 +14,16 @@ interface Props {
   medicine: Medicine;
   onTaken: (photoUrl?: string) => void;
   onSnooze?: () => void; 
+  verificationMode?: 'photo_required' | 'simple_only' | 'both';
 }
 
-export default function MedicationAlertScreen({ medicine, onTaken, onSnooze }: Props) {
+export default function MedicationAlertScreen({ 
+  medicine, 
+  onTaken, 
+  onSnooze,
+  verificationMode 
+}: Props) {
+  const activeMode = verificationMode || (localStorage.getItem('heymedi_pill_verification_mode') as any) || 'both';
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<string | null>(null);
@@ -129,36 +136,47 @@ export default function MedicationAlertScreen({ medicine, onTaken, onSnooze }: P
       />
 
       {/* 3. Action Buttons */}
-      <div className="w-full flex flex-col gap-3 mt-auto">
-        {/* Button 1: Chụp ảnh & Đã uống */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isVerifying}
-          className="w-full bg-[#1C4ED8] hover:bg-blue-700 text-white py-4 px-4 rounded-2xl font-black text-[16px] shadow-md flex items-center justify-center gap-2.5 active:scale-[0.98] transition-all cursor-pointer border-b-4 border-blue-900"
-        >
-          <Camera size={22} />
-          <span>📸 ĐÃ UỐNG + CHỤP ẢNH VỈ THUỐC</span>
-        </button>
+      <div className="w-full flex flex-col gap-2.5 mt-auto">
+        {/* Chế độ 1: Bắt buộc chụp ảnh (hoặc cả 2) */}
+        {(activeMode === 'photo_required' || activeMode === 'both') && (
+          <div>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isVerifying}
+              className="w-full bg-[#1C4ED8] hover:bg-blue-700 text-white py-3.5 px-4 rounded-2xl font-black text-[15px] shadow-md flex items-center justify-center gap-2.5 active:scale-[0.98] transition-all cursor-pointer border-b-4 border-blue-900"
+            >
+              <Camera size={20} />
+              <span>📸 {activeMode === 'photo_required' ? "BẮT BUỘC CHỤP ẢNH VỈ THUỐC" : "ĐÃ UỐNG + CHỤP ẢNH VỈ THUỐC"}</span>
+            </button>
+            {activeMode === 'photo_required' && (
+              <p className="text-[11px] text-gray-500 font-medium mt-1">
+                🔒 Người nhà yêu cầu chụp ảnh vỉ thuốc để AI kiểm tra an toàn
+              </p>
+            )}
+          </div>
+        )}
 
-        {/* Button 2: Đã uống ngay */}
-        <button
-          onClick={() => onTaken()}
-          disabled={isVerifying}
-          className="w-full bg-[#18A048] hover:bg-emerald-700 text-white py-3.5 px-4 rounded-2xl font-bold text-[15px] shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all uppercase tracking-wide cursor-pointer border-b-4 border-[#117C35]"
-        >
-          <Check size={20} strokeWidth={3} />
-          <span>Tôi đã uống thuốc (Không chụp ảnh)</span>
-        </button>
+        {/* Chế độ 2: Xác nhận nhanh (hoặc cả 2) */}
+        {(activeMode === 'simple_only' || activeMode === 'both') && (
+          <button
+            onClick={() => onTaken()}
+            disabled={isVerifying}
+            className="w-full bg-[#18A048] hover:bg-emerald-700 text-white py-3 px-4 rounded-2xl font-bold text-[14px] shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all uppercase tracking-wide cursor-pointer border-b-4 border-[#117C35]"
+          >
+            <Check size={18} strokeWidth={3} />
+            <span>Tôi đã uống thuốc {activeMode === 'both' ? "(Không chụp ảnh)" : ""}</span>
+          </button>
+        )}
 
         {/* Button 3: Nghe lại */}
         <button
           onClick={handleHearAgain}
-          className="w-full bg-white border border-[#D1DEFF] py-3 px-4 rounded-2xl flex items-center gap-3 active:scale-[0.98] transition-all shadow-sm cursor-pointer"
+          className="w-full bg-white border border-[#D1DEFF] py-2.5 px-4 rounded-2xl flex items-center gap-3 active:scale-[0.98] transition-all shadow-sm cursor-pointer"
         >
-          <Volume2 size={24} className="text-[#1C4ED8] shrink-0" />
+          <Volume2 size={22} className="text-[#1C4ED8] shrink-0" />
           <div className="flex flex-col items-start text-left">
             <span className="text-[#1C4ED8] font-bold text-xs tracking-wide uppercase">Nghe lại hướng dẫn</span>
-            <span className="text-gray-500 text-[11px] font-medium">Bấm để AI đọc lại liều lượng & cách dùng</span>
+            <span className="text-gray-500 text-[10.5px] font-medium">Bấm để AI đọc lại liều lượng & cách dùng</span>
           </div>
         </button>
       </div>

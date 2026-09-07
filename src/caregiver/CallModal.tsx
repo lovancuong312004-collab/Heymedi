@@ -33,6 +33,14 @@ interface Props {
   reminderNote?: string;
 }
 
+const RTC_CONFIG: RTCConfiguration = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+  ]
+};
+
 export default function CallModal({
   isOpen,
   onClose,
@@ -43,7 +51,7 @@ export default function CallModal({
   contactPhone,
   avatarUrl,
   isSOS = false,
-  initialVideo = false,
+  initialVideo = true,
   callId,
   isInitiator = true,
   patientName,
@@ -58,44 +66,125 @@ export default function CallModal({
   const [callStatus, setCallStatus] = useState<"ringing" | "connected" | "ended">(isInitiator ? "ringing" : "connected");
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [callDuration, setCallDuration] = useState(0);
+  
+  // Real Media Controls
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(true);
   const [isVideo, setIsVideo] = useState(initialVideo);
-  const [aiVoiceActive, setAiVoiceActive] = useState(false);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
+  const [hasRemoteStream, setHasRemoteStream] = useState(false);
+  const [aiVoiceActive, setAiVoiceActive] = useState(false);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  // WebRTC & Media Refs
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const channelRef = useRef<any>(null);
 
-  // Setup video stream if video mode is enabled
-  const startCamera = async (mode: "user" | "environment" = facingMode) => {
+  // Dừng toàn bộ Media Stream và đóng PeerConnection
+  const cleanupMedia = () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(t => t.stop());
+      localStreamRef.current = null;
+    }
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    setHasRemoteStream(false);
+  };
+
+  // Khởi động Camera và Micro thực tế
+  const getLocalMedia = async (mode: "user" | "environment" = facingMode) => {
     try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(t => t.stop());
       }
 
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: mode },
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: isVideo ? { facingMode: mode } : false,
           audio: true
         });
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
+      } catch (vidErr) {
+        console.warn("Could not get video track, fallback to audio only:", vidErr);
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: false,
+          audio: true
+        });
+        setIsVideo(false);
       }
-    } catch (err) {
-      console.warn("Could not start camera for video call:", err);
+
+      localStreamRef.current = stream;
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
+      return stream;
+    } catch (e) {
+      console.warn("No camera/microphone found or access denied:", e);
+      return null;
     }
   };
 
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+  // Thiết lập kết nối WebRTC truyền âm thanh và hình ảnh thực tế
+  const setupWebRTC = async (channel: any, currentId: string, asCaller: boolean) => {
+    try {
+      const stream = await getLocalMedia();
+      const pc = new RTCPeerConnection(RTC_CONFIG);
+      pcRef.current = pc;
+
+      // Thêm các track local vào kết nối
+      if (stream) {
+        stream.getTracks().forEach(track => {
+          pc.addTrack(track, stream);
+        });
+      }
+
+      // Nhận luồng Audio/Video thực tế từ máy đối phương
+      pc.ontrack = (event) => {
+        console.log("WebRTC ontrack received:", event.track.kind);
+        if (remoteVideoRef.current && event.streams && event.streams[0]) {
+          remoteVideoRef.current.srcObject = event.streams[0];
+          setHasRemoteStream(true);
+        }
+      };
+
+      // Gửi ICE Candidate cho đối phương qua Supabase Broadcast
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          channel.send({
+            type: 'broadcast',
+            event: 'WEBRTC_ICE',
+            payload: {
+              call_id: currentId,
+              candidate: event.candidate
+            }
+          }).catch(() => {});
+        }
+      };
+
+      // Nếu là bên gọi (Caller) -> Tạo Offer
+      if (asCaller) {
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        });
+        await pc.setLocalDescription(offer);
+        channel.send({
+          type: 'broadcast',
+          event: 'WEBRTC_OFFER',
+          payload: {
+            call_id: currentId,
+            sdp: offer
+          }
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.error("WebRTC setup error:", err);
     }
   };
 
@@ -105,18 +194,15 @@ export default function CallModal({
       setCallDuration(0);
       setAiVoiceActive(false);
       setStatusMessage("");
-      stopCamera();
+      cleanupMedia();
       return;
     }
 
     const currentId = callId || `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     setActiveCallId(currentId);
 
-    if (isVideo) {
-      startCamera();
-    }
-
     const channel = supabase.channel('sos-emergency-alerts');
+    channelRef.current = channel;
 
     if (isInitiator) {
       setCallStatus("ringing");
@@ -138,19 +224,20 @@ export default function CallModal({
         }
       }).catch(e => console.warn("Failed to broadcast incoming call:", e));
 
-      // Hết 35 giây không ai nhấc máy -> tự ngắt
+      // Hết 35 giây không ai nhấc máy -> Ghi nhận cuộc gọi nhỡ và tự ngắt
       const timeout = setTimeout(() => {
         setCallStatus("ended");
-        setStatusMessage("Người nhận không trả lời");
+        setStatusMessage("Người nhận không trả lời (Đã ghi nhận cuộc gọi nhỡ)");
         setTimeout(() => onClose(), 1500);
       }, 35000);
 
       // Lắng nghe chấp nhận, từ chối hoặc kết thúc
       channel
-        .on('broadcast', { event: 'CALL_ACCEPTED' }, (ev) => {
+        .on('broadcast', { event: 'CALL_ACCEPTED' }, async (ev) => {
           if (ev.payload?.call_id === currentId) {
             clearTimeout(timeout);
             setCallStatus("connected");
+            await setupWebRTC(channel, currentId, true);
           }
         })
         .on('broadcast', { event: 'CALL_REJECTED' }, (ev) => {
@@ -169,18 +256,61 @@ export default function CallModal({
             setTimeout(() => onClose(), 1200);
           }
         })
+        .on('broadcast', { event: 'WEBRTC_ANSWER' }, async (ev) => {
+          if (ev.payload?.call_id === currentId && pcRef.current) {
+            try {
+              await pcRef.current.setRemoteDescription(new RTCSessionDescription(ev.payload.sdp));
+            } catch (e) {
+              console.warn("Failed to set remote description on caller:", e);
+            }
+          }
+        })
+        .on('broadcast', { event: 'WEBRTC_ICE' }, async (ev) => {
+          if (ev.payload?.call_id === currentId && pcRef.current && ev.payload.candidate) {
+            try {
+              await pcRef.current.addIceCandidate(new RTCIceCandidate(ev.payload.candidate));
+            } catch (e) {}
+          }
+        })
         .subscribe();
 
       return () => {
         clearTimeout(timeout);
-        stopCamera();
+        cleanupMedia();
       };
     } else {
-      // Người nhận cuộc gọi: Bắt đầu ở trạng thái connected
+      // Người nhận cuộc gọi (Callee): Bắt đầu ở trạng thái connected
       setCallStatus("connected");
+      setupWebRTC(channel, currentId, false);
 
-      // Lắng nghe sự kiện ngắt máy từ đối phương
       channel
+        .on('broadcast', { event: 'WEBRTC_OFFER' }, async (ev) => {
+          if (ev.payload?.call_id === currentId && pcRef.current) {
+            try {
+              const pc = pcRef.current;
+              await pc.setRemoteDescription(new RTCSessionDescription(ev.payload.sdp));
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              channel.send({
+                type: 'broadcast',
+                event: 'WEBRTC_ANSWER',
+                payload: {
+                  call_id: currentId,
+                  sdp: answer
+                }
+              }).catch(() => {});
+            } catch (e) {
+              console.warn("Failed to handle WebRTC offer:", e);
+            }
+          }
+        })
+        .on('broadcast', { event: 'WEBRTC_ICE' }, async (ev) => {
+          if (ev.payload?.call_id === currentId && pcRef.current && ev.payload.candidate) {
+            try {
+              await pcRef.current.addIceCandidate(new RTCIceCandidate(ev.payload.candidate));
+            } catch (e) {}
+          }
+        })
         .on('broadcast', { event: 'CALL_ENDED' }, (ev) => {
           if (ev.payload?.call_id === currentId) {
             setCallStatus("ended");
@@ -191,10 +321,10 @@ export default function CallModal({
         .subscribe();
 
       return () => {
-        stopCamera();
+        cleanupMedia();
       };
     }
-  }, [isOpen, callId, isInitiator, isVideo]);
+  }, [isOpen, callId, isInitiator]);
 
   // Bộ đếm thời gian khi cuộc gọi kết nối
   useEffect(() => {
@@ -207,20 +337,63 @@ export default function CallModal({
     return () => clearInterval(interval);
   }, [isOpen, callStatus]);
 
-  const toggleVideoMode = () => {
-    if (!isVideo) {
-      setIsVideo(true);
-      startCamera();
-    } else {
-      setIsVideo(false);
-      stopCamera();
+  // Bật/Tắt Micro thực tế (Mute/Unmute Audio Track)
+  const toggleMute = () => {
+    const next = !isMuted;
+    setIsMuted(next);
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = !next;
+      });
     }
   };
 
+  // Bật/Tắt Camera thực tế (Video Track)
+  const toggleVideoMode = () => {
+    const next = !isVideo;
+    setIsVideo(next);
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach(track => {
+        track.enabled = next;
+      });
+    }
+  };
+
+  // Bật/Tắt Loa ngoài thực tế (Mute Remote Audio)
+  const toggleSpeaker = () => {
+    const next = !isSpeaker;
+    setIsSpeaker(next);
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.muted = !next;
+    }
+  };
+
+  // Chuyển đổi Camera trước / sau
   const handleSwitchCamera = () => {
     const nextMode = facingMode === "user" ? "environment" : "user";
     setFacingMode(nextMode);
-    startCamera(nextMode);
+    getLocalMedia(nextMode);
+  };
+
+  const handleEndCall = () => {
+    setCallStatus("ended");
+    cleanupMedia();
+
+    // Broadcast kết thúc cuộc gọi cho máy đối phương
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'CALL_ENDED',
+        payload: {
+          call_id: activeCallId,
+          ended_by_id: currentUser?.id
+        }
+      }).catch(() => {});
+    }
+
+    setTimeout(() => {
+      onClose();
+    }, 500);
   };
 
   if (!isOpen) return null;
@@ -231,74 +404,57 @@ export default function CallModal({
     return `${String(mins).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`;
   };
 
-  const handleEndCall = () => {
-    setCallStatus("ended");
-    stopCamera();
-
-    // Broadcast kết thúc cuộc gọi
-    const channel = supabase.channel('sos-emergency-alerts');
-    channel.send({
-      type: 'broadcast',
-      event: 'CALL_ENDED',
-      payload: {
-        call_id: activeCallId,
-        ended_by_id: currentUser?.id
-      }
-    }).catch(() => {});
-
-    setTimeout(() => {
-      onClose();
-    }, 600);
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in select-none">
-      <div className="w-full max-w-sm bg-gradient-to-b from-slate-900 via-slate-800 to-slate-950 text-white rounded-[36px] p-6 flex flex-col items-center justify-between min-h-[580px] shadow-2xl border border-white/10 relative overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in select-none">
+      <div className="w-full max-w-sm bg-gradient-to-b from-slate-900 via-slate-800 to-slate-950 text-white rounded-[36px] p-5 flex flex-col items-center justify-between min-h-[580px] shadow-2xl border border-white/10 relative overflow-hidden">
         
         {/* Glow effect */}
         <div className={`absolute top-0 w-48 h-48 rounded-full blur-3xl pointer-events-none ${isSOS ? "bg-rose-500/30" : "bg-emerald-500/20"}`} />
 
-        {/* Video stream container (if active) */}
-        {isVideo ? (
+        {/* Khung Video thời gian thực (WebRTC Video & Remote Feed) */}
+        {callStatus === "connected" && (isVideo || hasRemoteStream) ? (
           <div className="absolute inset-0 z-0 bg-black flex items-center justify-center">
-            {/* Main view: Simulated remote video stream */}
-            <div className="w-full h-full relative overflow-hidden flex items-center justify-center bg-slate-900">
-              <img
-                src={avatarUrl || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&fit=crop"}
-                alt={displayName}
-                className="w-full h-full object-cover opacity-80 scale-105 filter blur-xs"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/60" />
-              
-              {/* Center remote speaking avatar */}
+            {/* Luồng Video từ máy đối phương (Remote Video WebRTC) */}
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              className="w-full h-full object-cover"
+            />
+
+            {/* Fallback hiển thị Avatar nếu đối phương chưa bật camera */}
+            {!hasRemoteStream && (
               <div className="absolute flex flex-col items-center gap-2">
-                <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white/30 shadow-2xl">
-                  <img
-                    src={avatarUrl || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&h=150&fit=crop"}
-                    alt={displayName}
-                    className="w-full h-full object-cover"
-                  />
+                <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white/30 shadow-2xl bg-slate-800 flex items-center justify-center">
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-3xl font-bold">{(displayName || "N")[0].toUpperCase()}</span>
+                  )}
                 </div>
                 <span className="font-extrabold text-lg text-white drop-shadow-md">{displayName}</span>
+                <span className="text-xs text-slate-300">Đang truyền âm thanh WebRTC...</span>
               </div>
-            </div>
+            )}
 
-            {/* Picture-in-Picture Local Camera Feed */}
-            <div className="absolute top-4 right-4 w-28 h-36 rounded-2xl overflow-hidden border-2 border-white/40 shadow-2xl bg-slate-800 z-20">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-              />
-              <span className="absolute bottom-1 left-2 text-[9px] bg-black/60 px-1.5 py-0.5 rounded text-white font-bold">
-                Bạn
-              </span>
-            </div>
+            {/* Khung Picture-in-Picture Camera Của Bạn (Local Video WebRTC) */}
+            {isVideo && (
+              <div className="absolute top-4 right-4 w-28 h-36 rounded-2xl overflow-hidden border-2 border-white/40 shadow-2xl bg-slate-800 z-20">
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  muted // BẮT BUỘC muted để không bị vọng âm thanh của chính mình
+                  className="w-full h-full object-cover"
+                />
+                <span className="absolute bottom-1 left-2 text-[9px] bg-black/60 px-1.5 py-0.5 rounded text-white font-bold">
+                  Bạn
+                </span>
+              </div>
+            )}
           </div>
         ) : (
-          /* Voice Call Header Info */
+          /* Màn hình Thoại Giọng Nói Thông Thường (Voice Call) */
           <div className="flex flex-col items-center gap-3 pt-6 z-10 text-center">
             <div className="relative">
               <div className={`w-24 h-24 rounded-full overflow-hidden border-4 shadow-xl flex items-center justify-center bg-slate-800 ${
@@ -337,7 +493,7 @@ export default function CallModal({
                 <span className="text-yellow-300 animate-pulse">Đang đổ chuông máy đối phương...</span>
               )}
               {callStatus === "connected" && (
-                <span className="text-emerald-300">Đã kết nối • {formatTime(callDuration)}</span>
+                <span className="text-emerald-300">Đã kết nối trực tiếp • {formatTime(callDuration)}</span>
               )}
               {callStatus === "ended" && (
                 <span className="text-rose-400">{statusMessage || "Cuộc gọi đã kết thúc"}</span>
@@ -347,30 +503,30 @@ export default function CallModal({
         )}
 
         {/* Video Overlay Top Controls */}
-        {isVideo && (
+        {callStatus === "connected" && isVideo && (
           <div className="w-full flex items-center justify-between z-10 pt-2 px-1">
             <div className="bg-black/50 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-emerald-300 border border-white/10">
-              {callStatus === "connected" ? `Video Call • ${formatTime(callDuration)}` : "Đang kết nối..."}
+              WebRTC Trực Tiếp • {formatTime(callDuration)}
             </div>
             <button
               onClick={handleSwitchCamera}
               className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-white active:scale-90"
-              title="Đổi camera"
+              title="Đổi camera trước/sau"
             >
               <SwitchCamera size={16} />
             </button>
           </div>
         )}
 
-        {/* Reminder Prompt Card (if not in video or minimized) */}
-        {!isVideo && (
+        {/* Reminder Prompt Card */}
+        {callStatus !== "ended" && !isVideo && (
           <div className="w-full bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl p-3.5 z-10 my-4 text-left">
             <div className={`flex items-center gap-2 mb-1.5 text-xs font-bold ${isSOS ? "text-rose-400" : "text-emerald-400"}`}>
               <MessageSquare size={15} />
               <span>{isSOS ? "CUỘC GỌI KHẨN CẤP (SOS)" : "NỘI DUNG CUỘC GỌI"}</span>
             </div>
             <p className="text-white/90 text-sm font-semibold">
-              {isSOS ? "Đang kết nối ưu tiên đến người nhà. Người nhận sẽ thấy thông báo rung chuông khẩn cấp." : reminderNote}
+              {isSOS ? "Đang kết nối ưu tiên WebRTC đến người nhà. Âm thanh và hình ảnh được truyền trực tiếp." : reminderNote}
             </p>
 
             {callStatus === "connected" && !isSOS && (
@@ -389,35 +545,35 @@ export default function CallModal({
           </div>
         )}
 
-        {/* Control Buttons */}
+        {/* Control Buttons (Mic, Video, Speaker, End Call) */}
         <div className="w-full flex items-center justify-center gap-4 pt-2 z-20">
-          {/* Mute Button */}
+          {/* Mute Microphone Button */}
           <button
-            onClick={() => setIsMuted(!isMuted)}
+            onClick={toggleMute}
             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-              isMuted ? "bg-rose-500 text-white" : "bg-white/15 text-white hover:bg-white/25"
+              isMuted ? "bg-rose-500 text-white shadow-lg shadow-rose-900/40" : "bg-white/15 text-white hover:bg-white/25"
             }`}
             title={isMuted ? "Bật micro" : "Tắt micro"}
           >
             {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
           </button>
 
-          {/* Toggle Video Call Button */}
+          {/* Toggle Video/Camera Button */}
           <button
             onClick={toggleVideoMode}
             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-              isVideo ? "bg-primary text-white" : "bg-white/15 text-white hover:bg-white/25"
+              isVideo ? "bg-primary text-white shadow-lg shadow-blue-900/40" : "bg-white/15 text-white hover:bg-white/25"
             }`}
-            title={isVideo ? "Tắt camera" : "Bật Video Call"}
+            title={isVideo ? "Tắt camera" : "Bật camera"}
           >
             {isVideo ? <Video size={20} /> : <VideoOff size={20} />}
           </button>
 
           {/* Speaker Button */}
           <button
-            onClick={() => setIsSpeaker(!isSpeaker)}
+            onClick={toggleSpeaker}
             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-              !isSpeaker ? "bg-amber-500 text-white" : "bg-white/15 text-white hover:bg-white/25"
+              !isSpeaker ? "bg-amber-500 text-white shadow-lg shadow-amber-900/40" : "bg-white/15 text-white hover:bg-white/25"
             }`}
             title={isSpeaker ? "Tắt loa ngoài" : "Bật loa ngoài"}
           >

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Phone, PhoneOff, AlertCircle } from "lucide-react";
 import { startRingtone } from "../utils/voiceAssistant";
+import { recordMissedCall } from "../services/missedCallService";
 
 interface Props {
   isOpen: boolean;
@@ -29,8 +30,9 @@ export default function IncomingCallModal({
       const stopSound = startRingtone();
       stopRingtoneRef.current = stopSound;
 
-      // Tự động kết thúc nếu không ai nhấc máy sau 35s
+      // Tự động kết thúc nếu không ai nhấc máy sau 35s -> Ghi nhận cuộc gọi nhỡ
       const timeout = setTimeout(() => {
+        recordMissedCall({ callerName, callerRole, callerAvatar, isSOS });
         handleDecline();
       }, 35000);
 
@@ -47,7 +49,7 @@ export default function IncomingCallModal({
         stopRingtoneRef.current = null;
       }
     }
-  }, [isOpen]);
+  }, [isOpen, callerName, callerRole, callerAvatar, isSOS]);
 
   const handleAccept = () => {
     if (stopRingtoneRef.current) {
@@ -62,6 +64,7 @@ export default function IncomingCallModal({
       stopRingtoneRef.current();
       stopRingtoneRef.current = null;
     }
+    recordMissedCall({ callerName, callerRole, callerAvatar, isSOS });
     onDecline();
   };
 

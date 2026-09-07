@@ -21,6 +21,7 @@ import CaregiverSOSAlertModal, { type SOSAlertPayload } from "./caregiver/Caregi
 import ScanPrescriptionModal from "./caregiver/ScanPrescriptionModal";
 import AddMedModal from "./caregiver/AddMedModal";
 import { FamilyProvider, useFamily } from "./contexts/FamilyContext";
+import { recordMissedCall, getUnreadMissedCallCount } from "./services/missedCallService";
 import { supabase } from "./lib/supabase";
 
 interface Props {
@@ -47,6 +48,17 @@ function CaregiverAppContent({ user, onLogout }: Props) {
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [isAddMedOpen, setIsAddMedOpen] = useState(false);
   const [sosAlert, setSosAlert] = useState<SOSAlertPayload | null>(null);
+  const [unreadMissedCount, setUnreadMissedCount] = useState<number>(getUnreadMissedCallCount());
+
+  useEffect(() => {
+    const handleMissedUpdated = () => {
+      setUnreadMissedCount(getUnreadMissedCallCount());
+    };
+    window.addEventListener('heymedi_missed_calls_changed', handleMissedUpdated);
+    return () => {
+      window.removeEventListener('heymedi_missed_calls_changed', handleMissedUpdated);
+    };
+  }, []);
 
   // Cuộc gọi đến và Cuộc gọi đang hoạt động
   const [incomingCall, setIncomingCall] = useState<{
@@ -117,6 +129,13 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         rejected_by_id: user?.id
       }
     }).catch(() => {});
+
+    recordMissedCall({
+      callerName: incomingCall.callerName,
+      callerRole: incomingCall.callerRole,
+      callerAvatar: incomingCall.callerAvatar,
+      isSOS: incomingCall.isSOS,
+    });
     setIncomingCall(null);
   };
 
@@ -149,6 +168,12 @@ function CaregiverAppContent({ user, onLogout }: Props) {
       })
       .on('broadcast', { event: 'CALL_ENDED' }, (event) => {
         if (incomingCall && event.payload?.call_id === incomingCall.callId) {
+          recordMissedCall({
+            callerName: incomingCall.callerName,
+            callerRole: incomingCall.callerRole,
+            callerAvatar: incomingCall.callerAvatar,
+            isSOS: incomingCall.isSOS,
+          });
           setIncomingCall(null);
         }
       })
@@ -292,7 +317,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
           label="Thông báo"
           isActive={activeTab === "notifications"}
           onClick={() => setActiveTab("notifications")}
-          badgeCount={1}
+          badgeCount={unreadMissedCount > 0 ? unreadMissedCount : undefined}
         />
         <CaregiverNavItem
           icon={<BarChart3 size={22} />}

@@ -7,11 +7,13 @@ import {
   AlertTriangle, 
   CheckSquare, 
   Loader2,
-  Clock
+  Clock,
+  PhoneOff
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useFamily } from "../contexts/FamilyContext";
 import { supabase } from "../lib/supabase";
+import { getMissedCalls, markMissedCallsAsRead, type MissedCall } from "../services/missedCallService";
 import CallModal from "./CallModal";
 
 interface Props {
@@ -36,8 +38,22 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
 
   const [filter, setFilter] = useState<"all" | "overdue" | "taken">("all");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [missedCalls, setMissedCalls] = useState<MissedCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [callingMedNote, setCallingMedNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    markMissedCallsAsRead();
+    setMissedCalls(getMissedCalls());
+
+    const handleMissed = () => {
+      setMissedCalls(getMissedCalls());
+    };
+    window.addEventListener('heymedi_missed_calls_changed', handleMissed);
+    return () => {
+      window.removeEventListener('heymedi_missed_calls_changed', handleMissed);
+    };
+  }, []);
 
   const fetchTodayReminders = async () => {
     if (!linkedPatientId) {
@@ -162,6 +178,47 @@ export default function NotificationsScreen({ onOpenCall: _onOpenCall }: Props) 
           <span>Hôm nay</span>
         </div>
       </div>
+
+      {/* Danh sách Cuộc Gọi Nhỡ Gần Đây */}
+      {missedCalls.length > 0 && (
+        <div className="bg-gradient-to-r from-red-500/10 via-rose-500/10 to-amber-500/10 border-2 border-red-300 rounded-3xl p-4 shadow-sm animate-fade-in">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2 text-danger font-black text-xs uppercase tracking-wider">
+              <PhoneOff size={16} />
+              <span>Cuộc gọi nhỡ gần đây ({missedCalls.length})</span>
+            </div>
+            <span className="text-[10px] text-red-700 font-bold bg-white px-2.5 py-0.5 rounded-full border border-red-200 shadow-2xs">
+              Cần gọi lại
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-2 mt-1">
+            {missedCalls.map((call) => (
+              <div key={call.id} className="bg-white rounded-2xl p-3 border border-red-100 flex items-center justify-between shadow-xs">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-red-100 text-danger flex items-center justify-center shrink-0">
+                    <PhoneOff size={20} />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-bold text-[#1a2b4b] truncate">{call.callerName}</h4>
+                    <p className="text-xs text-red-600 font-semibold">
+                      Cuộc gọi nhỡ lúc {call.formattedTime} ({call.formattedDate})
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => _onOpenCall ? _onOpenCall() : setCallingMedNote("Gọi lại cuộc gọi nhỡ")}
+                  className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition-all shrink-0 cursor-pointer"
+                >
+                  <Phone size={13} className="fill-white" />
+                  <span>Gọi lại</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Summary Status Badges */}
       <div className="grid grid-cols-2 gap-3">

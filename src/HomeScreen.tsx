@@ -12,9 +12,15 @@ interface Props {
   user: any;
   onLogout: () => void;
   isAudioUnlocked?: boolean;
+  verificationMode?: 'photo_required' | 'simple_only' | 'both';
 }
 
-export default function HomeScreen({ user, onLogout: _onLogout, isAudioUnlocked = true }: Props) {
+export default function HomeScreen({ 
+  user, 
+  onLogout: _onLogout, 
+  isAudioUnlocked = true,
+  verificationMode 
+}: Props) {
   const rawName = user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "");
   const patientDisplayName = rawName ? (rawName.toLowerCase().startsWith("bác ") ? rawName : `Bác ${rawName}`) : "Bác";
   const patientId = user?.id;
@@ -185,6 +191,7 @@ export default function HomeScreen({ user, onLogout: _onLogout, isAudioUnlocked 
             instruction: alertMed.medication?.instructions || "Theo chỉ dẫn",
             time: new Date(alertMed.scheduled_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
           }}
+          verificationMode={verificationMode}
           onTaken={(photoUrl?: string) => handleTakeMedication(alertMed.id, photoUrl)}
           onSnooze={handleSnooze}
         />

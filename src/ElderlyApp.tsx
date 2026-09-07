@@ -8,6 +8,7 @@ import SettingsScreen from "./SettingsScreen";
 import IncomingCallModal from "./components/IncomingCallModal";
 import CallModal from "./caregiver/CallModal";
 import { silentAudioUnlock } from "./utils/voiceAssistant";
+import { recordMissedCall } from "./services/missedCallService";
 import { supabase } from "./lib/supabase";
 
 interface Props {
@@ -19,6 +20,11 @@ type ElderlyTab = "home" | "meds" | "family" | "settings";
 
 export default function ElderlyApp({ user, onLogout }: Props) {
   const [activeTab, setActiveTab] = useState<ElderlyTab>("home");
+
+  // Realtime Pill Verification Mode (Cấu hình minh chứng ảnh uống thuốc từ người chăm sóc)
+  const [verificationMode, setVerificationMode] = useState<'photo_required' | 'simple_only' | 'both'>(() => {
+    return (localStorage.getItem('heymedi_pill_verification_mode') as any) || 'both';
+  });
 
   // Realtime Calling state
   const [incomingCall, setIncomingCall] = useState<{
@@ -77,7 +83,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
     };
   }, []);
 
-  // Lắng nghe cuộc gọi đến thời gian thực cho Người Bệnh
+  // Lắng nghe cuộc gọi đến & cấu hình xác nhận thuốc thời gian thực cho Người Bệnh
   useEffect(() => {
     const channel = supabase.channel('sos-emergency-alerts')
       .on('broadcast', { event: 'INCOMING_CALL' }, (event) => {
@@ -96,12 +102,26 @@ export default function ElderlyApp({ user, onLogout }: Props) {
       })
       .on('broadcast', { event: 'CALL_ENDED' }, (event) => {
         if (incomingCall && event.payload?.call_id === incomingCall.callId) {
+          // Ghi nhận cuộc gọi nhỡ nếu người gọi cúp máy trước khi người bệnh kịp trả lời
+          recordMissedCall({
+            callerName: incomingCall.callerName,
+            callerRole: incomingCall.callerRole,
+            callerAvatar: incomingCall.callerAvatar,
+            isSOS: incomingCall.isSOS,
+          });
           setIncomingCall(null);
         }
       })
       .on('broadcast', { event: 'CALL_REJECTED' }, (event) => {
         if (incomingCall && event.payload?.call_id === incomingCall.callId) {
           setIncomingCall(null);
+        }
+      })
+      .on('broadcast', { event: 'VERIFICATION_MODE_CHANGED' }, (event) => {
+        console.log("ElderlyApp received VERIFICATION_MODE_CHANGED:", event);
+        if (event.payload?.mode) {
+          setVerificationMode(event.payload.mode);
+          localStorage.setItem('heymedi_pill_verification_mode', event.payload.mode);
         }
       })
       .subscribe();
@@ -146,6 +166,12 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         rejected_by_id: user?.id
       }
     }).catch(() => {});
+    recordMissedCall({
+      callerName: incomingCall.callerName,
+      callerRole: incomingCall.callerRole,
+      callerAvatar: incomingCall.callerAvatar,
+      isSOS: incomingCall.isSOS,
+    });
     setIncomingCall(null);
   };
 
@@ -165,7 +191,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         />
       )}
 
-      {/* Modal Đang thoại */}
+      {/* Modal Đang thoại WebRTC Thực tế */}
       {activeCall && (
         <CallModal
           isOpen={!!activeCall}
@@ -186,7 +212,8 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         {activeTab === "home" && (
           <HomeScreen 
             user={user} 
-            onLogout={onLogout} 
+            onLogout={onLogout}
+            verificationMode={verificationMode}
           />
         )}
         {activeTab === "meds" && <MedsScreen user={user} />}

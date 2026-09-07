@@ -18,7 +18,8 @@ import {
   Check,
   Cloud,
   RefreshCw,
-  Phone
+  Phone,
+  Camera
 } from "lucide-react";
 import { useFamily } from "../contexts/FamilyContext";
 import { supabase } from "../lib/supabase";
@@ -45,6 +46,27 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
   const [autoAlert, setAutoAlert] = useState(true);
   const [dailyAiReport, setDailyAiReport] = useState(true);
   const [aiVoiceCall, setAiVoiceCall] = useState(false);
+
+  // Cấu hình hình thức xác nhận uống thuốc của người già
+  const [verificationMode, setVerificationMode] = useState<'photo_required' | 'simple_only' | 'both'>(() => {
+    return (localStorage.getItem('heymedi_pill_verification_mode') as any) || 'both';
+  });
+
+  const handleSaveVerificationMode = (mode: 'photo_required' | 'simple_only' | 'both') => {
+    setVerificationMode(mode);
+    localStorage.setItem('heymedi_pill_verification_mode', mode);
+
+    const channel = supabase.channel('sos-emergency-alerts');
+    channel.send({
+      type: 'broadcast',
+      event: 'VERIFICATION_MODE_CHANGED',
+      payload: {
+        mode,
+        patient_id: linkedPatientId,
+        updated_at: new Date().toISOString()
+      }
+    }).catch(() => {});
+  };
   
   const [coCaregivers, setCoCaregivers] = useState<CaregiverMember[]>([]);
   const [loadingCaregivers, setLoadingCaregivers] = useState(false);
@@ -291,6 +313,85 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
                   <ToggleLeft size={36} className="text-gray-300" />
                 )}
               </button>
+            </div>
+
+            {/* Mục Cấu hình Hình thức Xác Nhận Uống Thuốc */}
+            <div className="p-4 border-b border-gray-100 bg-slate-50/60">
+              <div className="flex items-center gap-3 mb-1">
+                <div className="w-6 flex justify-center items-center text-primary">
+                  <Camera size={20} />
+                </div>
+                <div>
+                  <span className="text-[#1a2b4b] font-bold text-base block leading-tight">
+                    Yêu cầu minh chứng khi uống thuốc
+                  </span>
+                  <span className="text-xs text-gray-500 font-medium">
+                    Cấu hình nút bấm trên màn hình của {patientName}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 mt-3 pl-8">
+                {/* Lựa chọn 1: Bắt buộc chụp ảnh */}
+                <button
+                  onClick={() => handleSaveVerificationMode('photo_required')}
+                  className={cn(
+                    "p-3 rounded-2xl border text-left transition-all flex items-center justify-between cursor-pointer",
+                    verificationMode === 'photo_required'
+                      ? "border-primary bg-blue-50/90 ring-2 ring-primary/20 shadow-xs"
+                      : "border-gray-200 bg-white hover:bg-gray-50"
+                  )}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xl">📸</span>
+                    <div>
+                      <p className="text-xs font-bold text-[#1a2b4b] leading-tight">Bắt buộc chụp ảnh vỉ thuốc (AI đối chiếu)</p>
+                      <p className="text-[11px] text-gray-500 font-normal mt-0.5">Chỉ hiện nút chụp ảnh, AI kiểm tra đúng thuốc mới duyệt</p>
+                    </div>
+                  </div>
+                  {verificationMode === 'photo_required' && <Check size={16} className="text-primary shrink-0" />}
+                </button>
+
+                {/* Lựa chọn 2: Xác nhận nhanh */}
+                <button
+                  onClick={() => handleSaveVerificationMode('simple_only')}
+                  className={cn(
+                    "p-3 rounded-2xl border text-left transition-all flex items-center justify-between cursor-pointer",
+                    verificationMode === 'simple_only'
+                      ? "border-emerald-500 bg-emerald-50/90 ring-2 ring-emerald-500/20 shadow-xs"
+                      : "border-gray-200 bg-white hover:bg-gray-50"
+                  )}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xl">⚡</span>
+                    <div>
+                      <p className="text-xs font-bold text-[#1a2b4b] leading-tight">Xác nhận nhanh (Không cần chụp ảnh)</p>
+                      <p className="text-[11px] text-gray-500 font-normal mt-0.5">Chỉ hiện nút 'Tôi đã uống thuốc', bấm 1 chạm tiện lợi</p>
+                    </div>
+                  </div>
+                  {verificationMode === 'simple_only' && <Check size={16} className="text-emerald-600 shrink-0" />}
+                </button>
+
+                {/* Lựa chọn 3: Cả hai */}
+                <button
+                  onClick={() => handleSaveVerificationMode('both')}
+                  className={cn(
+                    "p-3 rounded-2xl border text-left transition-all flex items-center justify-between cursor-pointer",
+                    verificationMode === 'both'
+                      ? "border-blue-500 bg-blue-50/90 ring-2 ring-blue-500/20 shadow-xs"
+                      : "border-gray-200 bg-white hover:bg-gray-50"
+                  )}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xl">🔄</span>
+                    <div>
+                      <p className="text-xs font-bold text-[#1a2b4b] leading-tight">Cung cấp cả 2 lựa chọn (Mặc định)</p>
+                      <p className="text-[11px] text-gray-500 font-normal mt-0.5">Người già có thể chọn chụp ảnh hoặc bấm uống ngay</p>
+                    </div>
+                  </div>
+                  {verificationMode === 'both' && <Check size={16} className="text-blue-600 shrink-0" />}
+                </button>
+              </div>
             </div>
           </>
         )}
