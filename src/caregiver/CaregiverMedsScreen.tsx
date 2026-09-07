@@ -1,19 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   Plus, 
-  Calendar, 
+  Calendar as CalendarIcon, 
   CheckCircle2, 
-  Clock, 
   Scan, 
   Phone, 
   Trash2, 
-  AlertCircle,
-  Loader2
+  Loader2, 
+  CalendarCheck 
 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import { cn } from "../lib/utils";
 import { useFamily } from "../contexts/FamilyContext";
-import { getTodaySchedule, markAsTaken, type Reminder } from "../services/medicationService";
+import { 
+  getScheduleByDate, 
+  getScheduleDaysSummary, 
+  markAsTaken, 
+  type Reminder 
+} from "../services/medicationService";
 import { supabase } from "../lib/supabase";
 
 interface Props {
@@ -30,15 +34,25 @@ export default function CaregiverMedsScreen({
   const { linkedPatientId: patientId, patientInfo } = useFamily();
   const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Người thân");
   
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [activeFilter, setActiveFilter] = useState("Tất cả");
   const [schedule, setSchedule] = useState<Reminder[]>([]);
+  const [daysSummary, setDaysSummary] = useState<Record<string, { count: number; allTaken: boolean; hasPending: boolean }>>({});
   const [loading, setLoading] = useState(true);
   const [markingId, setMarkingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentDate(new Date()), 30000);
-    return () => clearInterval(timer);
+  // Dải ngày chọn nhanh (Từ 3 ngày trước đến 10 ngày tới)
+  const dateStrip = useMemo(() => {
+    const list: Date[] = [];
+    const base = new Date();
+    base.setHours(0, 0, 0, 0);
+
+    for (let i = -3; i <= 10; i++) {
+      const d = new Date(base);
+      d.setDate(d.getDate() + i);
+      list.push(d);
+    }
+    return list;
   }, []);
 
   const loadData = async () => {
@@ -50,8 +64,13 @@ export default function CaregiverMedsScreen({
 
     try {
       setLoading(true);
-      const data = await getTodaySchedule(patientId);
+      const data = await getScheduleByDate(patientId, selectedDate);
       setSchedule(data);
+
+      const start = dateStrip[0];
+      const end = dateStrip[dateStrip.length - 1];
+      const summary = await getScheduleDaysSummary(patientId, start, end);
+      setDaysSummary(summary);
     } catch (err) {
       console.error("Failed to load caregiver meds schedule:", err);
     } finally {
@@ -65,10 +84,10 @@ export default function CaregiverMedsScreen({
     if (patientId) {
       const channelName = `caregiver-meds-${patientId}-${Date.now()}`;
       const channel = supabase.channel(channelName)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders' }, () => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders', filter: `patient_id=eq.${patientId}` }, () => {
           loadData();
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'medications' }, () => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'medications', filter: `patient_id=eq.${patientId}` }, () => {
           loadData();
         })
         .subscribe();
@@ -77,7 +96,7 @@ export default function CaregiverMedsScreen({
         supabase.removeChannel(channel);
       };
     }
-  }, [patientId]);
+  }, [patientId, selectedDate]);
 
   const handleToggleTaken = async (reminderId: string, currentStatus: string) => {
     try {
@@ -113,219 +132,284 @@ export default function CaregiverMedsScreen({
     }
   };
 
-  const lunar = Lunar.fromDate(currentDate);
-  const dayOfWeek = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"][currentDate.getDay()];
-  const dateString = `${dayOfWeek}, ${String(currentDate.getDate()).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
-  const lunarString = `(${String(lunar.getDay()).padStart(2, '0')}/${String(lunar.getMonth()).padStart(2, '0')} Âm lịch)`;
-
-  const getPeriodForHour = (hour: number) => {
-    if (hour >= 5 && hour < 11) return "Sáng";
-    if (hour >= 11 && hour <= 14) return "Trưa";
-    if (hour > 14 && hour <= 20) return "Tối";
-    return "Trước ngủ";
+  const isToday = (d: Date) => {
+    const now = new Date();
+    return d.getDate() === now.getDate() && 
+           d.getMonth() === now.getMonth() && 
+           d.getFullYear() === now.getFullYear();
   };
 
-  const filteredMeds = (schedule || []).filter((med) => {
+  const isSameDay = (d1: Date, d2: Date) => {
+    return d1.getDate() === d2.getDate() && 
+           d1.getMonth() === d2.getMonth() && 
+           d1.getFullYear() === d2.getFullYear();
+  };
+
+  const lunar = Lunar.fromDate(selectedDate);
+  const dayOfWeekNames = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
+  const dayName = dayOfWeekNames[selectedDate.getDay()];
+  const formattedSolarDate = `${dayName}, ${String(selectedDate.getDate()).padStart(2, '0')}/${String(selectedDate.getMonth() + 1).padStart(2, '0')}/${selectedDate.getFullYear()}`;
+  const formattedLunarDate = `(Ngày ${String(lunar.getDay()).padStart(2, '0')}/${String(lunar.getMonth()).padStart(2, '0')} Âm lịch - ${lunar.getYearInGanZhi()} ${lunar.getMonthInGanZhi()})`;
+
+  const filteredMeds = schedule.filter(med => {
     if (activeFilter === "Tất cả") return true;
     const hour = new Date(med.scheduled_time).getHours();
-    return getPeriodForHour(hour) === activeFilter;
+    let period = "Sáng";
+    if (hour >= 11 && hour <= 14) period = "Trưa";
+    else if (hour > 14 && hour <= 20) period = "Tối";
+    else if (hour > 20) period = "Trước ngủ";
+    return period === activeFilter;
   });
 
-  const hasOverdue = (schedule || []).some(
-    (m) => m.status === 'missed' || (m.status === 'pending' && new Date(m.scheduled_time) < new Date())
-  );
+  const takenCount = schedule.filter(s => s.status === 'taken').length;
+  const totalCount = schedule.length;
+  const progressPercent = totalCount > 0 ? Math.round((takenCount / totalCount) * 100) : 0;
 
   return (
-    <div className="p-5 flex flex-col min-h-full bg-[#F4F7FB] animate-fade-in">
+    <div className="p-4 sm:p-5 flex flex-col min-h-full bg-[#F4F7FB] pb-28 select-none">
       
       {/* Header */}
-      <div className="flex justify-between items-center mb-4 relative mt-2">
-        <h1 className="text-2xl font-bold text-[#1a2b4b] w-full text-center">Lịch thuốc {patientName}</h1>
-        <button 
-          onClick={onOpenAddMed}
-          className="absolute right-0 flex items-center gap-1 text-primary font-bold text-sm hover:opacity-80 active:scale-95 transition-all"
-        >
-          <Plus size={18} strokeWidth={3} />
-          Thêm thuốc
-        </button>
+      <div className="flex justify-between items-center mb-3 mt-1">
+        <div>
+          <h1 className="text-2xl font-black text-[#1a2b4b]">Lịch Thuốc Của Bệnh Nhân</h1>
+          <p className="text-xs text-gray-400 font-semibold">Theo dõi & lên lịch lộ trình điều trị cho {patientName}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={onOpenCall}
+            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-2xl font-bold text-xs active:scale-95 transition-all cursor-pointer"
+            title="Gọi video/thoại cho người bệnh"
+          >
+            <Phone size={15} />
+            <span className="hidden sm:inline">Gọi điện</span>
+          </button>
+          <button 
+            onClick={onOpenScan}
+            className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-primary border border-blue-200 px-3 py-2 rounded-2xl font-bold text-xs active:scale-95 transition-all cursor-pointer"
+            title="Quét đơn thuốc bác sĩ bằng AI"
+          >
+            <Scan size={15} />
+            <span className="hidden sm:inline">Quét đơn AI</span>
+          </button>
+          <button 
+            onClick={onOpenAddMed}
+            className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-white px-3.5 py-2 rounded-2xl font-bold text-xs shadow-md shadow-primary/20 active:scale-95 transition-all cursor-pointer"
+          >
+            <Plus size={16} strokeWidth={3} />
+            <span>Thêm thuốc</span>
+          </button>
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-2 -mx-5 px-5 mt-2 no-scrollbar">
-        {["Tất cả", "Sáng", "Trưa", "Tối", "Trước ngủ"].map((tab) => {
-          const isActive = activeFilter === tab;
-          return (
+      {/* THANH CHỌN NGÀY TRỰC QUAN CHO NGƯỜI CHĂM SÓC */}
+      <div className="bg-white rounded-3xl p-3.5 shadow-sm border border-gray-100 mb-3.5">
+        <div className="flex items-center justify-between mb-2.5 px-1">
+          <div className="flex items-center gap-2">
+            <CalendarIcon size={18} className="text-primary" />
+            <span className="text-sm font-black text-[#1a2b4b]">
+              Tháng {selectedDate.getMonth() + 1}, {selectedDate.getFullYear()}
+            </span>
+          </div>
+
+          {!isToday(selectedDate) && (
             <button
-              key={tab}
-              onClick={() => setActiveFilter(tab)}
+              onClick={() => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                setSelectedDate(today);
+              }}
+              className="text-xs font-bold text-primary bg-blue-50 px-2.5 py-1 rounded-full hover:bg-blue-100 transition-colors cursor-pointer"
+            >
+              Về hôm nay
+            </button>
+          )}
+        </div>
+
+        {/* Dải ngày */}
+        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar scroll-smooth">
+          {dateStrip.map((d) => {
+            const isSelected = isSameDay(d, selectedDate);
+            const todayFlag = isToday(d);
+            const dayStr = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"][d.getDay()];
+            const solarNum = d.getDate();
+            const lunarObj = Lunar.fromDate(d);
+            const lunarNum = lunarObj.getDay();
+
+            const dateKey = d.toISOString().split('T')[0];
+            const dayInfo = daysSummary[dateKey];
+
+            return (
+              <button
+                key={d.toISOString()}
+                onClick={() => setSelectedDate(d)}
+                className={cn(
+                  "flex flex-col items-center justify-center min-w-[58px] py-2.5 px-1 rounded-2xl border-2 transition-all cursor-pointer shrink-0 relative",
+                  isSelected 
+                    ? "bg-primary text-white border-primary shadow-lg shadow-primary/30 scale-105" 
+                    : "bg-gray-50/80 text-gray-600 border-gray-100 hover:bg-gray-100/70"
+                )}
+              >
+                {todayFlag && (
+                  <span className={cn(
+                    "text-[8px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-full mb-0.5",
+                    isSelected ? "bg-white text-primary" : "bg-primary text-white"
+                  )}>
+                    Hôm nay
+                  </span>
+                )}
+
+                <span className={cn("text-[11px] font-bold", isSelected ? "text-white/90" : "text-gray-400")}>
+                  {dayStr}
+                </span>
+
+                <span className={cn("text-lg font-black leading-tight my-0.5", isSelected ? "text-white" : "text-[#1a2b4b]")}>
+                  {String(solarNum).padStart(2, '0')}
+                </span>
+
+                <span className={cn("text-[9px] font-semibold", isSelected ? "text-white/80" : "text-gray-400")}>
+                  Âm {lunarNum}
+                </span>
+
+                {dayInfo && dayInfo.count > 0 && (
+                  <div className="absolute -bottom-1 flex items-center justify-center">
+                    <span className={cn(
+                      "w-2 h-2 rounded-full ring-2 ring-white",
+                      dayInfo.allTaken ? "bg-emerald-400" : "bg-amber-400 animate-pulse"
+                    )} />
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Progress Card của ngày được chọn */}
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-4 text-white shadow-lg shadow-blue-600/20 mb-3.5 flex items-center justify-between">
+        <div className="space-y-1">
+          <span className="text-xs font-bold text-white/80 uppercase tracking-wider">Tiến độ uống thuốc</span>
+          <h3 className="text-xl font-black">
+            {takenCount} / {totalCount} cữ đã uống
+          </h3>
+          <p className="text-xs text-blue-100">{formattedSolarDate}</p>
+        </div>
+        <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center font-black text-lg border border-white/30">
+          {progressPercent}%
+        </div>
+      </div>
+
+      {/* Bộ lọc buổi */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 mb-3 no-scrollbar">
+        {["Tất cả", "Sáng", "Trưa", "Tối", "Trước ngủ"].map((filter) => {
+          const isActive = filter === activeFilter;
+          return (
+            <button 
+              key={filter} 
+              onClick={() => setActiveFilter(filter)}
               className={cn(
-                "px-6 py-2.5 rounded-full font-bold text-base whitespace-nowrap transition-colors border-2 shrink-0 cursor-pointer",
-                isActive 
-                  ? "bg-primary text-white border-primary shadow-md shadow-primary/30" 
-                  : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                "px-5 py-2 rounded-full font-bold text-xs whitespace-nowrap transition-colors border-2 shrink-0 active:scale-95 cursor-pointer",
+                isActive ? "bg-[#1a2b4b] text-white border-[#1a2b4b] shadow-sm" : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
               )}
             >
-              {tab}
+              {filter}
             </button>
           );
         })}
       </div>
 
-      {/* Overdue Warning */}
-      {hasOverdue && (
-        <div className="bg-[#FFF0F0] border border-[#FFD6D6] rounded-2xl p-3.5 flex items-center justify-between text-xs mt-3 shadow-sm">
-          <div className="flex items-center gap-2 text-danger font-medium">
-            <AlertCircle size={18} className="shrink-0" />
-            <span>Có thuốc đã quá giờ mà {patientName} chưa xác nhận uống!</span>
+      {/* Danh sách thuốc */}
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden mb-4">
+        <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <CalendarCheck size={18} className="text-primary" />
+            <h3 className="font-extrabold text-[#1a2b4b] text-sm sm:text-base">
+              Chi tiết các cữ thuốc ({filteredMeds.length})
+            </h3>
           </div>
-          <button
-            onClick={onOpenCall}
-            className="text-danger font-bold underline shrink-0 ml-2 hover:opacity-80 cursor-pointer"
-          >
-            Gọi nhắc ngay
-          </button>
-        </div>
-      )}
-
-      {/* Main Timeline Card */}
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden mt-3 mb-4">
-        
-        {/* Date Header */}
-        <div className="flex justify-between items-center p-5 border-b border-gray-100">
-          <div>
-            <h2 className="text-[#1a2b4b] font-bold text-lg">Hôm nay - {dateString}</h2>
-            <p className="text-gray-500 text-sm mt-0.5">{lunarString}</p>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 shrink-0">
-            <Calendar size={20} />
-          </div>
+          <span className="text-xs font-semibold text-gray-500">{formattedLunarDate}</span>
         </div>
 
-        {/* Timeline List */}
-        <div className="p-5 flex flex-col gap-6 relative">
+        <div className="p-4 flex flex-col gap-3 min-h-[220px]">
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-              <Loader2 className="w-8 h-8 animate-spin text-primary mb-2" />
-              <p className="text-sm font-medium">Đang tải lịch thuốc từ hệ thống...</p>
+            <div className="flex flex-col items-center justify-center py-12 opacity-70">
+              <Loader2 size={36} className="text-primary animate-spin mb-2" />
+              <p className="text-gray-500 font-bold text-sm">Đang tải lịch thuốc...</p>
             </div>
-          ) : filteredMeds.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-              <Clock className="w-10 h-10 mb-2 opacity-40" />
-              <p className="font-medium text-sm">
-                Chưa có lịch uống thuốc nào {activeFilter !== "Tất cả" ? `buổi ${activeFilter.toLowerCase()}` : "hôm nay"}
-              </p>
-              <button 
-                onClick={onOpenAddMed}
-                className="mt-3 text-primary text-sm font-bold flex items-center gap-1 hover:underline cursor-pointer"
-              >
-                <Plus size={16} /> Thêm lịch thuốc ngay
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="absolute left-[73px] top-10 bottom-12 w-0.5 bg-gray-200" />
-              
-              {filteredMeds.map((med) => {
-                const isDone = med.status === "taken";
-                const isOverdue = med.status === "missed" || (med.status === "pending" && new Date(med.scheduled_time) < new Date());
-                const timeColor = isDone ? "text-success" : isOverdue ? "text-danger" : "text-gray-400";
-                
-                const medDate = new Date(med.scheduled_time);
-                const timeStr = `${String(medDate.getHours()).padStart(2, '0')}:${String(medDate.getMinutes()).padStart(2, '0')}`;
-                const period = getPeriodForHour(medDate.getHours());
+          ) : filteredMeds.length > 0 ? (
+            filteredMeds.map((med) => {
+              const isDone = med.status === 'taken';
+              const d = new Date(med.scheduled_time);
+              const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
-                const medName = med.medication?.name || "Thuốc không tên";
-                const dosage = med.medication?.dosage || "1 viên";
-                const instruction = med.medication?.instructions || "Uống sau ăn";
-                const imgSrc = med.medication?.image_url || "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=150";
-                const isProcessing = markingId === med.id;
-
-                return (
-                  <div key={med.id} className="flex items-start gap-4 relative z-10">
-                    {/* Time & Period */}
-                    <div className="w-[50px] flex flex-col items-center shrink-0 pt-1">
-                      <span className={cn("font-bold text-xl leading-none", timeColor)}>{timeStr}</span>
-                      <span className={cn("text-xs font-bold mt-1", timeColor)}>{period}</span>
+              return (
+                <div 
+                  key={med.id} 
+                  className={cn(
+                    "border-2 rounded-2xl p-3.5 flex items-center justify-between gap-3 transition-all",
+                    isDone ? "bg-emerald-50/50 border-emerald-200" : "bg-white border-gray-200 hover:border-blue-300"
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-12 h-12 rounded-xl flex flex-col items-center justify-center font-black text-xs shrink-0",
+                      isDone ? "bg-emerald-100 text-emerald-800" : "bg-blue-50 text-primary"
+                    )}>
+                      <span>{timeStr}</span>
                     </div>
 
-                    {/* Status Icon */}
-                    <button 
-                      onClick={() => handleToggleTaken(med.id, med.status)}
-                      disabled={isProcessing}
-                      className="w-6 h-6 shrink-0 bg-[#F4F7FB] flex items-center justify-center rounded-full mt-1 z-10 cursor-pointer active:scale-90 transition-transform"
-                      title={isDone ? "Bấm để đánh dấu chưa uống" : "Bấm để đánh dấu đã uống"}
-                    >
-                      {isProcessing ? (
-                        <Loader2 className="animate-spin text-primary" size={20} />
-                      ) : isDone ? (
-                        <CheckCircle2 className="text-success fill-success/20" size={26} strokeWidth={3} />
-                      ) : isOverdue ? (
-                        <AlertCircle className="text-danger fill-danger/20" size={26} strokeWidth={3} />
-                      ) : (
-                        <Clock className="text-gray-400 fill-gray-100" size={26} strokeWidth={3} />
-                      )}
-                    </button>
-
-                    {/* Pill Card Content */}
-                    <div className="flex-1 flex flex-col gap-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center border border-gray-100 overflow-hidden shrink-0 shadow-sm">
-                          <img src={imgSrc} alt={medName} className="w-full h-full object-cover" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[#1a2b4b] font-extrabold text-lg leading-tight truncate">
-                              {medName}
-                            </span>
-                            <button
-                              onClick={() => handleDelete(med.id, medName)}
-                              className="text-gray-300 hover:text-danger p-1 transition-colors cursor-pointer"
-                              title="Xóa lịch thuốc này"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                          <span className="text-gray-600 text-sm mt-1 block">{dosage}</span>
-                          <span className="text-gray-600 text-sm mt-0.5 block truncate">{instruction}</span>
-                        </div>
-                      </div>
-
-                      {/* Overdue Call Action */}
-                      {isOverdue && (
-                        <div className="flex items-center justify-between pt-1">
-                          <span className="text-xs font-bold text-danger">⚠️ Quá giờ chưa thấy uống</span>
-                          <button
-                            onClick={onOpenCall}
-                            className="bg-danger hover:bg-danger/90 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-sm active:scale-95 transition-transform cursor-pointer"
-                          >
-                            <Phone size={12} className="fill-white" />
-                            Gọi nhắc ngay
-                          </button>
-                        </div>
+                    <div className="flex flex-col">
+                      <span className="font-extrabold text-sm sm:text-base text-[#1a2b4b] leading-tight">
+                        {med.medication?.name || "Thuốc"}
+                      </span>
+                      <span className="text-xs text-primary font-bold mt-0.5">
+                        Liều: {med.medication?.dosage || "1 liều"}
+                      </span>
+                      {med.medication?.instructions && (
+                        <span className="text-xs text-gray-500 font-medium line-clamp-1 mt-0.5">
+                          {med.medication.instructions}
+                        </span>
                       )}
                     </div>
                   </div>
-                );
-              })}
-            </>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => handleToggleTaken(med.id, med.status)}
+                      disabled={markingId === med.id}
+                      className={cn(
+                        "px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 transition-all cursor-pointer",
+                        isDone 
+                          ? "bg-emerald-600 text-white shadow-sm" 
+                          : "bg-gray-100 hover:bg-emerald-50 text-gray-600 hover:text-emerald-600 border border-gray-200"
+                      )}
+                    >
+                      {markingId === med.id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <CheckCircle2 size={14} />
+                      )}
+                      <span>{isDone ? "Đã uống" : "Đánh dấu"}</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleDelete(med.id, med.medication?.name || "Thuốc")}
+                      className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-rose-600 flex items-center justify-center transition-colors cursor-pointer"
+                      title="Xóa cữ thuốc này"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <CheckCircle2 size={40} className="text-gray-300 mb-2" strokeWidth={1.5} />
+              <p className="font-bold text-gray-600 text-sm">Không có cữ thuốc nào trong ngày này</p>
+              <p className="text-xs text-gray-400 mt-0.5">Hãy bấm "Thêm thuốc" hoặc "Quét đơn AI" để lên lịch</p>
+            </div>
           )}
         </div>
-      </div>
-
-      {/* Quét thuốc AI Button */}
-      <div className="mt-auto pt-2 pb-2">
-        <button 
-          onClick={onOpenScan}
-          className="w-full bg-[#EBF1FF] rounded-2xl p-5 flex flex-col items-center justify-center border border-[#D1E0FF] shadow-[0_4px_14px_rgba(26,86,219,0.1)] cursor-pointer active:scale-95 transition-transform gap-1"
-        >
-          <div className="flex items-center gap-2 text-primary">
-            <Scan size={28} strokeWidth={2.5} />
-            <span className="font-extrabold text-xl">QUÉT THUỐC (AI)</span>
-          </div>
-          <span className="text-[#1a2b4b]/80 text-sm font-semibold mt-1">
-            Quét hộp thuốc để thêm nhanh cho {patientName}
-          </span>
-        </button>
       </div>
 
     </div>
