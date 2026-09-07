@@ -407,11 +407,22 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
             <div className="flex flex-col items-center justify-center py-2 space-y-4">
               
               {/* Cảnh báo lỗi nhận diện (Ví dụ chụp selfie / không phải đơn thuốc) */}
+              {/* Cảnh báo lỗi nhận diện */}
               {scanError && (
-                <div className="w-full bg-red-50 border border-red-200 rounded-3xl p-4 flex flex-col gap-2.5 animate-fade-in text-red-950">
-                  <div className="flex items-center gap-2 font-black text-sm text-red-700">
-                    <AlertTriangle size={20} className="shrink-0" />
-                    <span>Không nhận diện được đơn thuốc y tế</span>
+                <div className="w-full bg-red-50 border border-red-200 rounded-3xl p-4 flex flex-col gap-2.5 animate-fade-in text-red-950 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-black text-sm text-red-700">
+                      <AlertTriangle size={20} className="shrink-0" />
+                      <span>Không nhận diện được đơn thuốc y tế</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setScanError(null)}
+                      className="w-7 h-7 rounded-full bg-red-100 hover:bg-red-200 text-red-700 flex items-center justify-center transition-colors cursor-pointer"
+                      title="Đóng cảnh báo"
+                    >
+                      <X size={15} />
+                    </button>
                   </div>
                   <p className="text-xs leading-relaxed text-red-800 font-medium">
                     {scanError}
@@ -419,14 +430,20 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => setIsCameraOpen(true)}
+                      onClick={() => {
+                        setScanError(null);
+                        setIsCameraOpen(true);
+                      }}
                       className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer shadow-sm"
                     >
                       📸 Chụp lại bằng Camera
                     </button>
                     <button
                       type="button"
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => {
+                        setScanError(null);
+                        fileInputRef.current?.click();
+                      }}
                       className="px-3.5 py-2 bg-white hover:bg-red-50 border border-red-300 text-red-800 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer"
                     >
                       📁 Chọn ảnh khác từ máy
@@ -464,6 +481,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                 <button
                   type="button"
                   onClick={() => {
+                    setScanError(null);
                     setApiKeyInput(getGeminiApiKey());
                     setApiKeyTestResult(null);
                     setShowApiKeyModal(true);
@@ -488,7 +506,10 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                 {/* Lựa chọn 1: Mở Camera chụp trực tiếp */}
                 <button 
                   type="button"
-                  onClick={() => setIsCameraOpen(true)}
+                  onClick={() => {
+                    setScanError(null);
+                    setIsCameraOpen(true);
+                  }}
                   className="flex flex-col items-center justify-center text-center gap-3 bg-gradient-to-b from-blue-600 to-primary text-white rounded-3xl p-6 sm:p-7 hover:shadow-xl hover:shadow-primary/30 transition-all cursor-pointer group active:scale-[0.98] border border-blue-400/30 shadow-md"
                 >
                   <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white shadow-inner group-hover:scale-110 transition-transform">
@@ -506,7 +527,10 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                 {/* Lựa chọn 2: Tải ảnh có sẵn từ máy */}
                 <button 
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => {
+                    setScanError(null);
+                    fileInputRef.current?.click();
+                  }}
                   className="flex flex-col items-center justify-center text-center gap-3 bg-white text-gray-800 border-2 border-dashed border-gray-300 rounded-3xl p-6 sm:p-7 hover:border-primary hover:bg-blue-50/40 hover:text-primary transition-all cursor-pointer group active:scale-[0.98] shadow-sm hover:shadow-md"
                 >
                   <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-600 group-hover:text-primary group-hover:bg-blue-100 transition-colors">

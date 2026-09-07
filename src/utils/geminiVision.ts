@@ -87,21 +87,67 @@ export function saveActiveGeminiModel(modelName: string): void {
 }
 
 /**
+ * Truy vấn ModelService.ListModels từ Google để lấy danh sách model được cấp quyền cho API Key
+ */
+export async function fetchSupportedModels(apiKey: string): Promise<string[]> {
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (Array.isArray(data.models)) {
+      const available = data.models
+        .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
+        .map((m: any) => String(m.name).replace(/^models\//, ""))
+        .filter((name: string) => name.toLowerCase().includes("gemini"));
+
+      // Ưu tiên: 2.0-flash -> flash-latest -> flash -> pro
+      available.sort((a: string, b: string) => {
+        const score = (s: string) => {
+          if (s.includes("2.0-flash")) return 10;
+          if (s.includes("flash-latest")) return 9;
+          if (s.includes("1.5-flash")) return 8;
+          if (s.includes("flash")) return 7;
+          if (s.includes("2.0")) return 6;
+          return 1;
+        };
+        return score(b) - score(a);
+      });
+
+      return available;
+    }
+  } catch (err) {
+    console.warn("fetchSupportedModels error:", err);
+  }
+  return [];
+}
+
+/**
  * Thực thi gọi Gemini với cơ chế Auto-Fallback thông minh
- * Tự động thử danh sách model khả dụng, lưu nhớ model đã thành công
+ * Tự động truy vấn model từ Google ListModels API và thử danh sách model khả dụng
  */
 export async function generateContentWithFallback(
   client: GoogleGenerativeAI,
   contents: any[]
 ): Promise<{ text: string; modelName: string }> {
   const savedModel = getSavedActiveGeminiModel();
-  const modelsToTry = savedModel 
-    ? [savedModel, ...CANDIDATE_GEMINI_MODELS.filter(m => m !== savedModel)]
-    : CANDIDATE_GEMINI_MODELS;
+  
+  // 1. Lấy danh sách model thực tế cấp quyền cho API Key này
+  const apiKey = getGeminiApiKey();
+  let dynamicModels: string[] = [];
+  if (apiKey) {
+    dynamicModels = await fetchSupportedModels(apiKey);
+  }
+
+  // Kết hợp: model đã lưu -> dynamic models từ Google -> candidate mặc định
+  const combined = Array.from(new Set([
+    ...(savedModel ? [savedModel] : []),
+    ...dynamicModels,
+    ...CANDIDATE_GEMINI_MODELS
+  ]));
 
   let lastError: any = null;
 
-  for (const modelName of modelsToTry) {
+  for (const modelName of combined) {
     try {
       const model = client.getGenerativeModel({ model: modelName });
       const result = await model.generateContent(contents);
