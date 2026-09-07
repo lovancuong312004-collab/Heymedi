@@ -40,16 +40,17 @@ export default function CaregiverDashboard({
     if (patientId) {
       loadData();
       
-      const channel = supabase.channel('caregiver-dashboard-channel')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders', filter: `patient_id=eq.${patientId}` }, () => {
+      const channelName = `caregiver-dash-${patientId}-${Date.now()}`;
+      const channel = supabase.channel(channelName)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders' }, () => {
           loadData();
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'medications', filter: `patient_id=eq.${patientId}` }, () => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'medications' }, () => {
           loadData();
         })
         .subscribe();
 
-      const interval = setInterval(loadData, 30000);
+      const interval = setInterval(loadData, 15000);
       
       return () => {
         clearInterval(interval);
@@ -287,51 +288,63 @@ export default function CaregiverDashboard({
           ) : schedule.map((item) => {
             const isDone = item.status === "taken";
             
-            // Checking if it's overdue (pending and time passed > 30mins)
+            // Checking if it's overdue (missed or pending and time passed > 15mins)
             const scheduledTime = new Date(item.scheduled_time);
             const now = new Date();
-            const isOverdue = item.status === "pending" && (now.getTime() - scheduledTime.getTime() > 30 * 60000);
+            const isOverdue = item.status === "missed" || (item.status === "pending" && (now.getTime() - scheduledTime.getTime() > 15 * 60000));
 
             return (
-              <div key={item.id} className="flex items-center justify-between">
+              <div key={item.id} className="flex items-center justify-between p-2 rounded-2xl hover:bg-gray-50/80 transition-colors">
                 <div className="flex items-center gap-3">
                   {/* Status Indicator */}
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0">
                     {isDone ? (
                       <CheckCircle2 size={24} className="text-success fill-success/20" strokeWidth={2.5} />
                     ) : isOverdue ? (
                       <AlertCircle size={24} className="text-danger fill-danger/20" strokeWidth={2.5} />
                     ) : (
-                      <Clock size={24} className="text-gray-300" strokeWidth={2} />
+                      <Clock size={24} className="text-blue-400" strokeWidth={2} />
                     )}
                   </div>
 
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-[#1a2b4b] font-bold text-sm">{item.medication?.name || "Thuốc"}</span>
-                      <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-bold">
+                      <span className="text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full font-bold">
                         {scheduledTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-                    <p className="text-gray-500 text-xs mt-0.5">{item.medication?.instructions}</p>
+                    <p className="text-gray-500 text-xs mt-0.5">
+                      {item.medication?.dosage ? `${item.medication.dosage} • ` : ""}{item.medication?.instructions || "Theo chỉ dẫn"}
+                    </p>
                   </div>
                 </div>
 
                 {/* Right badge / call */}
-                {isOverdue ? (
-                  <button
-                    onClick={onOpenCall}
-                    className="bg-danger text-white text-xs font-bold px-3 py-1.5 rounded-xl active:scale-95 transition-all shadow-sm"
-                  >
-                    Gọi nhắc
-                  </button>
-                ) : isDone ? (
-                  <span className="text-xs font-bold text-success bg-green-50 px-2 py-1 rounded-lg">
-                    Đã uống
-                  </span>
-                ) : (
-                  <span className="text-xs font-medium text-gray-400">Sắp tới</span>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {isOverdue ? (
+                    <button
+                      onClick={onOpenCall}
+                      className="bg-danger hover:bg-danger/90 text-white text-xs font-bold px-3 py-1.5 rounded-xl active:scale-95 transition-all shadow-sm flex items-center gap-1"
+                    >
+                      <Phone size={12} className="fill-white" />
+                      Gọi nhắc
+                    </button>
+                  ) : isDone ? (
+                    <span className="text-xs font-bold text-success bg-green-50 border border-green-100 px-2.5 py-1 rounded-lg">
+                      Đã uống {item.taken_at ? `(${new Date(item.taken_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})` : ''}
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleMarkDone(item.id)}
+                      disabled={markingId === item.id}
+                      className="text-xs font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-primary px-2.5 py-1 rounded-lg transition-all active:scale-95"
+                      title="Đánh dấu đã uống hộ"
+                    >
+                      {markingId === item.id ? "Đang lưu..." : "Chờ uống"}
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}

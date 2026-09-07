@@ -1,18 +1,19 @@
 import { useState, useEffect } from "react";
-import { Calendar, Volume2, Scan, AlertCircle, Loader2, Bell } from "lucide-react";
+import { Calendar, Volume2, Scan, AlertCircle, Loader2 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import SOSModal from "./screens/SOSModal";
 import MedicationAlertScreen from "./screens/MedicationAlertScreen";
 import { getTodaySchedule, markAsTaken, type Reminder } from "./services/medicationService";
-import { unlockAudio, announceMedication } from "./utils/voiceAssistant";
+import { announceMedication } from "./utils/voiceAssistant";
 import { supabase } from "./lib/supabase";
 
 interface Props {
   user: any;
   onLogout: () => void;
+  isAudioUnlocked?: boolean;
 }
 
-export default function HomeScreen({ user, onLogout: _onLogout }: Props) {
+export default function HomeScreen({ user, onLogout: _onLogout, isAudioUnlocked = true }: Props) {
   const userName = user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "Bác");
   const patientId = user?.id;
 
@@ -24,18 +25,18 @@ export default function HomeScreen({ user, onLogout: _onLogout }: Props) {
   const [takingId, setTakingId] = useState<string | null>(null);
 
   // Alarm and audio state
-  const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
   const [alertMed, setAlertMed] = useState<Reminder | null>(null);
 
   useEffect(() => {
     if (patientId) {
       loadSchedule();
 
-      const channel = supabase.channel('custom-all-channel')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders', filter: `patient_id=eq.${patientId}` }, () => {
+      const channelName = `elderly-home-${patientId}-${Date.now()}`;
+      const channel = supabase.channel(channelName)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reminders' }, () => {
           loadSchedule();
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'medications', filter: `patient_id=eq.${patientId}` }, () => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'medications' }, () => {
           loadSchedule();
         })
         .subscribe();
@@ -129,19 +130,6 @@ export default function HomeScreen({ user, onLogout: _onLogout }: Props) {
       )}
       
       <div className="p-5 flex flex-col gap-4">
-        {/* Audio unlock button - Lách luật Autoplay */}
-        {!isAudioUnlocked && (
-          <button 
-            onClick={() => {
-              unlockAudio();
-              setIsAudioUnlocked(true);
-            }}
-            className="w-full bg-[#EBF1FF] border-2 border-primary text-primary py-3 rounded-2xl font-bold text-sm shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2 animate-bounce"
-          >
-            <Bell size={18} className="fill-primary" /> Bật chuông nhắc nhở hôm nay
-          </button>
-        )}
-
         {/* Header */}
         <div className="flex items-center gap-2 mt-2">
           <div className="w-10 h-10 rounded-full overflow-hidden bg-blue-100 border-2 border-white shadow-sm shrink-0 flex items-center justify-center text-primary font-bold text-base">

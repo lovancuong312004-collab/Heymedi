@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Plus, ChevronRight, Heart, CheckCircle2, UserPlus, Loader2 } from "lucide-react";
+import { Plus, ChevronRight, Heart, CheckCircle2, UserPlus, Loader2, Phone, AlertCircle } from "lucide-react";
 import HealthProfileModal from "./screens/HealthProfileModal";
 import GenerateLinkModal from "./screens/GenerateLinkModal";
+import CallModal from "./caregiver/CallModal";
 import { supabase } from "./lib/supabase";
 
 interface Props {
@@ -13,6 +14,13 @@ export default function FamilyScreen({ user }: Props) {
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [familyMembers, setFamilyMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [callingContact, setCallingContact] = useState<{
+    name: string;
+    role?: string;
+    phone?: string;
+    avatarUrl?: string;
+    isSOS?: boolean;
+  } | null>(null);
 
   const fetchCaregivers = async () => {
     try {
@@ -118,14 +126,44 @@ export default function FamilyScreen({ user }: Props) {
       />
 
       {/* 1. Header Bar */}
-      <div className="flex justify-center items-center py-2 mb-3">
+      <div className="flex justify-center items-center py-2 mb-2">
         <h1 className="text-xl font-bold text-[#1A2B4B] tracking-tight">Gia đình</h1>
+      </div>
+
+      {/* Nút Gọi Khẩn Cấp (SOS) Siêu Nổi Bật cho Người Cao Tuổi */}
+      <div 
+        onClick={() => setCallingContact({
+          name: familyMembers[0]?.name || "Con cả (Người chăm sóc chính)",
+          role: "Đường dây ưu tiên SOS",
+          phone: "0901 234 567",
+          avatarUrl: familyMembers[0]?.avatar_url,
+          isSOS: true
+        })}
+        className="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-500 text-white rounded-3xl p-4 shadow-lg shadow-red-500/25 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all mb-4 border border-red-400/40 select-none"
+      >
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0 border border-white/30 animate-pulse">
+            <AlertCircle size={28} className="text-white" strokeWidth={2.5} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="bg-white/25 text-white font-extrabold text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                Khẩn cấp
+              </span>
+              <h3 className="font-black text-lg leading-tight">GỌI KHẨN CẤP (SOS)</h3>
+            </div>
+            <p className="text-red-100 text-xs mt-0.5 font-medium">Bấm để gọi ngay lập tức cho người thân</p>
+          </div>
+        </div>
+        <div className="w-10 h-10 rounded-full bg-white text-red-600 flex items-center justify-center shadow-md shrink-0">
+          <Phone size={20} className="fill-red-600" />
+        </div>
       </div>
 
       {/* 2. Top Card: Hồ sơ sức khỏe của tôi */}
       <div 
         onClick={() => setIsHealthProfileOpen(true)}
-        className="bg-white rounded-3xl p-4 flex items-center justify-between border border-blue-50 shadow-sm cursor-pointer hover:bg-blue-50/30 active:scale-[0.98] transition-all mb-5 group"
+        className="bg-white rounded-3xl p-4 flex items-center justify-between border border-blue-50 shadow-sm cursor-pointer hover:bg-blue-50/30 active:scale-[0.98] transition-all mb-4 group"
       >
         <div className="flex items-center gap-3.5 min-w-0">
           <div className="w-12 h-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center shrink-0 border border-red-100 shadow-sm">
@@ -161,7 +199,7 @@ export default function FamilyScreen({ user }: Props) {
             <Loader2 className="animate-spin text-primary" size={32} />
           </div>
         ) : familyMembers.length === 0 ? (
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-8 flex flex-col items-center justify-center text-center">
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-6 flex flex-col items-center justify-center text-center">
             <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-3 text-primary">
               <UserPlus size={28} />
             </div>
@@ -175,16 +213,22 @@ export default function FamilyScreen({ user }: Props) {
             </button>
           </div>
         ) : (
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 flex flex-col overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 flex flex-col overflow-hidden divide-y divide-gray-100">
             {familyMembers.map((member, idx) => (
               <MemberItem 
-                key={member.id}
+                key={member.id || idx}
                 name={member.name}
                 role={member.role}
                 email={member.email}
                 avatarUrl={member.avatar_url}
                 initial={member.initial}
-                hasBorder={idx < familyMembers.length - 1}
+                onCall={() => setCallingContact({
+                  name: member.name,
+                  role: member.role,
+                  phone: member.phone || "0901 234 567",
+                  avatarUrl: member.avatar_url,
+                  isSOS: false
+                })}
               />
             ))}
           </div>
@@ -202,6 +246,19 @@ export default function FamilyScreen({ user }: Props) {
         </div>
       </div>
 
+      {/* Modal Gọi điện mô phỏng Hackathon */}
+      {callingContact && (
+        <CallModal
+          isOpen={!!callingContact}
+          onClose={() => setCallingContact(null)}
+          contactName={callingContact.name}
+          contactRole={callingContact.role}
+          contactPhone={callingContact.phone}
+          avatarUrl={callingContact.avatarUrl}
+          isSOS={callingContact.isSOS}
+        />
+      )}
+
     </div>
   );
 }
@@ -212,19 +269,17 @@ function MemberItem({
   email,
   avatarUrl, 
   initial, 
-  hasBorder 
+  onCall 
 }: { 
   name: string; 
   role: string; 
   email?: string;
   avatarUrl?: string; 
   initial: string;
-  hasBorder?: boolean; 
+  onCall: () => void;
 }) {
   return (
-    <div 
-      className={`flex items-center justify-between p-3.5 hover:bg-gray-50/80 transition-colors group ${hasBorder ? 'border-b border-gray-100' : ''}`}
-    >
+    <div className="flex items-center justify-between p-3.5 hover:bg-gray-50/80 transition-colors">
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-11 h-11 rounded-full overflow-hidden border border-gray-100 shadow-sm shrink-0 bg-blue-50 flex items-center justify-center text-primary font-bold">
           {avatarUrl ? (
@@ -246,9 +301,15 @@ function MemberItem({
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-1 text-xs text-primary font-bold bg-blue-50 px-2.5 py-1 rounded-full shrink-0">
-        <CheckCircle2 size={13} />
-        <span>Đã kết nối</span>
+
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          onClick={onCall}
+          className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm active:scale-95 transition-all cursor-pointer"
+        >
+          <Phone size={13} className="fill-white" />
+          <span>Gọi</span>
+        </button>
       </div>
     </div>
   );
