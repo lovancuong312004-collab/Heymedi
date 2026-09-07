@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   Home, 
   Pill, 
@@ -139,6 +139,9 @@ function CaregiverAppContent({ user, onLogout }: Props) {
     setIncomingCall(null);
   };
 
+  const incomingCallRef = useRef(incomingCall);
+  incomingCallRef.current = incomingCall;
+
   // Global Emergency SOS & Medication Proof & Incoming Call Listener
   useEffect(() => {
     const channel = supabase.channel('sos-emergency-alerts')
@@ -146,7 +149,8 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         console.log("Global Caregiver received SOS Broadcast:", event);
         const payload = event.payload as SOSAlertPayload;
         if (payload) {
-          if (!linkedPatientId || payload.patient_id === linkedPatientId) {
+          // Khớp đúng người bệnh hoặc chưa liên kết hoặc payload chưa có ID
+          if (!linkedPatientId || payload.patient_id === linkedPatientId || !payload.patient_id || payload.patient_id === "patient_unknown") {
             setSosAlert(payload);
           }
         }
@@ -167,18 +171,20 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         });
       })
       .on('broadcast', { event: 'CALL_ENDED' }, (event) => {
-        if (incomingCall && event.payload?.call_id === incomingCall.callId) {
+        const active = incomingCallRef.current;
+        if (active && event.payload?.call_id === active.callId) {
           recordMissedCall({
-            callerName: incomingCall.callerName,
-            callerRole: incomingCall.callerRole,
-            callerAvatar: incomingCall.callerAvatar,
-            isSOS: incomingCall.isSOS,
+            callerName: active.callerName,
+            callerRole: active.callerRole,
+            callerAvatar: active.callerAvatar,
+            isSOS: active.isSOS,
           });
           setIncomingCall(null);
         }
       })
       .on('broadcast', { event: 'CALL_REJECTED' }, (event) => {
-        if (incomingCall && event.payload?.call_id === incomingCall.callId) {
+        const active = incomingCallRef.current;
+        if (active && event.payload?.call_id === active.callId) {
           setIncomingCall(null);
         }
       })
@@ -201,7 +207,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [linkedPatientId, user?.id, patientName, patientInfo, incomingCall]);
+  }, [linkedPatientId, user?.id]);
 
   return (
     <div className="w-full flex flex-col min-h-screen relative bg-[#F4F7FB] font-sans">

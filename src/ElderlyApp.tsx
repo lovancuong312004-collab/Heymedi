@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Home, Pill, Users, Settings } from "lucide-react";
 import { cn } from "./lib/utils";
 import HomeScreen from "./HomeScreen";
@@ -83,6 +83,9 @@ export default function ElderlyApp({ user, onLogout }: Props) {
     };
   }, []);
 
+  const incomingCallRef = useRef(incomingCall);
+  incomingCallRef.current = incomingCall;
+
   // Lắng nghe cuộc gọi đến & cấu hình xác nhận thuốc thời gian thực cho Người Bệnh
   useEffect(() => {
     const channel = supabase.channel('sos-emergency-alerts')
@@ -101,19 +104,21 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         });
       })
       .on('broadcast', { event: 'CALL_ENDED' }, (event) => {
-        if (incomingCall && event.payload?.call_id === incomingCall.callId) {
+        const active = incomingCallRef.current;
+        if (active && event.payload?.call_id === active.callId) {
           // Ghi nhận cuộc gọi nhỡ nếu người gọi cúp máy trước khi người bệnh kịp trả lời
           recordMissedCall({
-            callerName: incomingCall.callerName,
-            callerRole: incomingCall.callerRole,
-            callerAvatar: incomingCall.callerAvatar,
-            isSOS: incomingCall.isSOS,
+            callerName: active.callerName,
+            callerRole: active.callerRole,
+            callerAvatar: active.callerAvatar,
+            isSOS: active.isSOS,
           });
           setIncomingCall(null);
         }
       })
       .on('broadcast', { event: 'CALL_REJECTED' }, (event) => {
-        if (incomingCall && event.payload?.call_id === incomingCall.callId) {
+        const active = incomingCallRef.current;
+        if (active && event.payload?.call_id === active.callId) {
           setIncomingCall(null);
         }
       })
@@ -129,7 +134,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, incomingCall]);
+  }, [user?.id]);
 
   const handleAcceptCall = () => {
     if (!incomingCall) return;
