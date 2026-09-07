@@ -56,24 +56,107 @@ export function getGeminiClient(): { client: GoogleGenerativeAI; apiKey: string 
 }
 
 /**
- * Kiểm tra kết nối API Key với Google Gemini
+ * Danh sách model ưu tiên cao nhất theo lộ trình của Google AI
  */
-export async function testGeminiApiKey(testKey?: string): Promise<{ success: boolean; message: string }> {
+export const CANDIDATE_GEMINI_MODELS = [
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-001",
+  "gemini-1.5-flash-002",
+  "gemini-2.0-flash-exp",
+  "gemini-1.5-pro",
+  "gemini-1.5-pro-latest"
+];
+
+export function getSavedActiveGeminiModel(): string {
+  try {
+    return localStorage.getItem('heymedi_active_gemini_model') || "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveActiveGeminiModel(modelName: string): void {
+  try {
+    localStorage.setItem('heymedi_active_gemini_model', modelName);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Thực thi gọi Gemini với cơ chế Auto-Fallback thông minh
+ * Tự động thử danh sách model khả dụng, lưu nhớ model đã thành công
+ */
+export async function generateContentWithFallback(
+  client: GoogleGenerativeAI,
+  contents: any[]
+): Promise<{ text: string; modelName: string }> {
+  const savedModel = getSavedActiveGeminiModel();
+  const modelsToTry = savedModel 
+    ? [savedModel, ...CANDIDATE_GEMINI_MODELS.filter(m => m !== savedModel)]
+    : CANDIDATE_GEMINI_MODELS;
+
+  let lastError: any = null;
+
+  for (const modelName of modelsToTry) {
+    try {
+      const model = client.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(contents);
+      const response = await result.response;
+      const text = response.text().trim();
+      if (text) {
+        saveActiveGeminiModel(modelName);
+        return { text, modelName };
+      }
+    } catch (err: any) {
+      lastError = err;
+      const msg = err?.message || "";
+      if (msg.includes("404") || msg.includes("not found") || msg.includes("not supported") || msg.includes("is not found")) {
+        console.warn(`[Gemini Auto-Detect] Model "${modelName}" không hỗ trợ (404). Đang thử model tiếp theo...`);
+        continue;
+      }
+      if (msg.includes("429") || msg.includes("ResourceExhausted") || msg.includes("quota")) {
+        console.warn(`[Gemini Auto-Detect] Model "${modelName}" quá tải (429). Đang thử model tiếp theo...`);
+        continue;
+      }
+      if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid") || msg.includes("PERMISSION_DENIED")) {
+        throw err;
+      }
+      console.warn(`[Gemini Auto-Detect] Lỗi thử "${modelName}":`, msg);
+    }
+  }
+
+  throw lastError || new Error("Không tìm thấy model Gemini tương thích với API Key của bạn.");
+}
+
+/**
+ * Kiểm tra kết nối API Key với Google Gemini bằng Auto-Detect
+ */
+export async function testGeminiApiKey(testKey?: string): Promise<{ success: boolean; message: string; activeModel?: string }> {
   const keyToUse = testKey?.trim() || getGeminiApiKey();
   if (!keyToUse) {
     return { success: false, message: "Chưa nhập API Key" };
   }
   try {
     const ai = new GoogleGenerativeAI(keyToUse);
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const res = await model.generateContent("Test connection. Respond with OK.");
-    const txt = res.response.text();
-    if (txt) {
-      return { success: true, message: "Kết nối Gemini AI 1.5 Flash thành công!" };
+    const { text, modelName } = await generateContentWithFallback(ai, ["Ping test. Trả lời 'OK'."]);
+    if (text) {
+      return { 
+        success: true, 
+        message: `Kết nối thành công với ${modelName}!`,
+        activeModel: modelName 
+      };
     }
     return { success: false, message: "Không nhận được phản hồi từ AI" };
   } catch (err: any) {
-    return { success: false, message: err?.message || "Lỗi xác thực API Key hoặc mạng" };
+    const msg = err?.message || "";
+    if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid")) {
+      return { success: false, message: "API Key không hợp lệ. Vui lòng kiểm tra lại mã khóa." };
+    }
+    return { success: false, message: msg || "Lỗi xác thực API Key hoặc mạng" };
   }
 }
 
@@ -282,7 +365,13 @@ export async function analyzePrescription(imageFile: File): Promise<Prescription
 
   try {
     const { client } = geminiEnv;
-    const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const optimized = await optimizeImageForAI(imageFile, 1280, 0.85);
+    const imagePart = {
+      inlineData: {
+        data: optimized.data,
+        mimeType: optimized.mimeType
+      }
+    };
 
     const prompt = `
 Bạn là Bác sĩ Trưởng khoa Dược lâm sàng giàu kinh nghiệm. Hãy phân tích chi tiết ảnh y tế được cung cấp.
@@ -323,18 +412,9 @@ BƯỚC 2: NẾU ĐÚNG LÀ ĐƠN THUỐC Y TẾ:
 TRẢ VỀ DUY NHẤT CHUỖI JSON HỢP LỆ (Không có markdown block, không có \`\`\`json).
 `.trim();
 
-    // Nén ảnh nhanh để tăng tốc độ phản hồi tối đa
-    const optimized = await optimizeImageForAI(imageFile, 1280, 0.85);
-    const imagePart = {
-      inlineData: {
-        data: optimized.data,
-        mimeType: optimized.mimeType
-      }
-    };
-
-    const result = await model.generateContent([prompt, imagePart as any]);
-    const response = await result.response;
-    let text = response.text().trim();
+    const { text: rawText, modelName } = await generateContentWithFallback(client, [prompt, imagePart as any]);
+    console.log(`[Gemini Vision] Đã phân tích đơn thuốc bằng model: ${modelName}`);
+    let text = rawText.trim();
 
     if (text.startsWith('```json')) {
       text = text.replace(/^```json/, '').replace(/```$/, '').trim();
@@ -440,8 +520,6 @@ export async function verifyPillIntakeWithAI(
 
   try {
     const { client } = geminiEnv;
-    const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
-
     const optimized = await optimizeImageForAI(imageInput, 960, 0.85);
 
     const prompt = `
@@ -474,8 +552,9 @@ TRẢ VỀ DUY NHẤT CHUỖI JSON:
       }
     };
 
-    const result = await model.generateContent([prompt, imagePart as any]);
-    const text = (await result.response).text().trim()
+    const { text: rawText, modelName } = await generateContentWithFallback(client, [prompt, imagePart as any]);
+    console.log(`[Pill Verification AI] Đã kiểm tra vỉ thuốc bằng model: ${modelName}`);
+    const text = rawText
       .replace(/^```json/gi, '')
       .replace(/```$/g, '')
       .trim();
@@ -543,7 +622,6 @@ export async function analyzeUnknownMedWithAI(
 
   try {
     const { client } = geminiEnv;
-    const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
     const optimized = await optimizeImageForAI(imageInput, 1024, 0.85);
 
     const prompt = `
@@ -572,8 +650,9 @@ HÃY PHÂN TÍCH ẢNH VÀ TRẢ VỀ DUY NHẤT CHUỖI JSON:
       }
     };
 
-    const result = await model.generateContent([prompt, imagePart as any]);
-    const text = (await result.response).text().trim()
+    const { text: rawText, modelName } = await generateContentWithFallback(client, [prompt, imagePart as any]);
+    console.log(`[Unknown Med AI] Đã phân tích thuốc lạ bằng model: ${modelName}`);
+    const text = rawText
       .replace(/^```json/gi, '')
       .replace(/```$/g, '')
       .trim();

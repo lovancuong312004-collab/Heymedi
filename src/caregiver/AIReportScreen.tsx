@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { supabase } from "../lib/supabase";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getGeminiClient, generateContentWithFallback } from "../utils/geminiVision";
 
 interface AIAnalysisData {
   evaluation: string;
@@ -192,10 +192,9 @@ export default function AIReportScreen() {
     const timeStr = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (apiKey && apiKey !== "dummy_key_for_build") {
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const geminiEnv = getGeminiClient();
+      if (geminiEnv) {
+        const { client } = geminiEnv;
 
         const prompt = `
 Bạn là Bác sĩ Trưởng khoa Lão khoa và Tim mạch. Hãy đưa ra nhận định y khoa súc tích, chuyên sâu về báo cáo tuân thủ dùng thuốc của bệnh nhân:
@@ -213,10 +212,8 @@ Yêu cầu trả về định dạng JSON thuần túy (không dùng markdown co
 }
 `.trim();
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text().trim();
-        const cleanJson = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+        const { text: rawText } = await generateContentWithFallback(client, [prompt]);
+        const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
         const parsed = JSON.parse(cleanJson);
 
         setAiAnalysis({
