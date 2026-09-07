@@ -139,7 +139,7 @@ export default function MedsScreen({ user }: Props) {
   const dayOfWeekNames = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
   const dayName = dayOfWeekNames[selectedDate.getDay()];
   const formattedSolarDate = `${dayName}, ${String(selectedDate.getDate()).padStart(2, '0')}/${String(selectedDate.getMonth() + 1).padStart(2, '0')}/${selectedDate.getFullYear()}`;
-  const formattedLunarDate = `(Ngày ${String(lunar.getDay()).padStart(2, '0')}/${String(lunar.getMonth()).padStart(2, '0')} Âm lịch - ${lunar.getYearInGanZhi()} ${lunar.getMonthInGanZhi()})`;
+  const formattedLunarDate = `(Ngày ${String(lunar.getDay()).padStart(2, '0')}/${String(lunar.getMonth()).padStart(2, '0')} Âm lịch)`;
 
   // Lọc theo cữ buổi
   const filteredMeds = (schedule || []).filter(med => {

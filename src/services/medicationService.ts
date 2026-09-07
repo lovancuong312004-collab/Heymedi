@@ -296,15 +296,19 @@ export async function addMedicationAndReminder(
 }
 
 /**
- * Xóa thuốc và toàn bộ lịch nhắc chưa uống
+ * Xóa thuốc và toàn bộ lịch nhắc trong toàn bộ lộ trình
  */
 export async function deleteMedication(medicationId: string): Promise<void> {
   if (!medicationId) return;
   try {
-    await supabase
+    const { error: remError } = await supabase
       .from('reminders')
       .delete()
       .eq('medication_id', medicationId);
+
+    if (remError) {
+      console.error("Error deleting reminders for medication:", remError);
+    }
 
     const { error } = await supabase
       .from('medications')
@@ -320,3 +324,162 @@ export async function deleteMedication(medicationId: string): Promise<void> {
     throw err;
   }
 }
+
+export interface ActiveMedicationItem extends Medication {
+  totalReminders?: number;
+  pendingReminders?: number;
+  takenReminders?: number;
+  nextScheduledTime?: string | null;
+}
+
+/**
+ * Lấy toàn bộ danh sách thuốc đang có của bệnh nhân kèm thống kê cữ nhắc
+ */
+export async function getActiveMedications(patientId: string): Promise<ActiveMedicationItem[]> {
+  if (!patientId) return [];
+  try {
+    const { data: meds, error } = await supabase
+      .from('medications')
+      .select(`
+        *,
+        reminders (id, status, scheduled_time)
+      `)
+      .eq('patient_id', patientId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn("Lỗi join reminders, fallback lấy bảng medications:", error);
+      const { data: simpleMeds } = await supabase
+        .from('medications')
+        .select('*')
+        .eq('patient_id', patientId)
+        .order('created_at', { ascending: false });
+      return simpleMeds || [];
+    }
+
+    if (!meds) return [];
+
+    const nowIso = new Date().toISOString();
+
+    return meds.map(m => {
+      const remindersList: any[] = Array.isArray(m.reminders) ? m.reminders : [];
+      const total = remindersList.length;
+      const pending = remindersList.filter(r => r.status === 'pending').length;
+      const taken = remindersList.filter(r => r.status === 'taken').length;
+      
+      const futurePending = remindersList
+        .filter(r => r.status === 'pending' && r.scheduled_time >= nowIso)
+        .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
+
+      return {
+        ...m,
+        totalReminders: total,
+        pendingReminders: pending,
+        takenReminders: taken,
+        nextScheduledTime: futurePending[0]?.scheduled_time || null
+      };
+    });
+  } catch (err) {
+    console.error("getActiveMedications unexpected error:", err);
+    return [];
+  }
+}
+
+export interface DiagnosisRecord {
+  id: string;
+  patient_id: string;
+  diagnosis: string;
+  hospital_name: string;
+  doctor_name: string;
+  date: string; // YYYY-MM-DD or DD/MM/YYYY
+  revisit_days?: number;
+  created_at: string;
+}
+
+/**
+ * Lưu chẩn đoán y tế từ đơn thuốc vào tiền sử bệnh / hồ sơ bệnh án của bệnh nhân
+ */
+export async function saveDiagnosisRecord(
+  patientId: string, 
+  data: {
+    diagnosis: string;
+    hospitalName?: string;
+    doctorName?: string;
+    date?: string;
+    revisitDays?: number;
+  }
+): Promise<void> {
+  if (!patientId || !data.diagnosis) return;
+
+  const newRecord: DiagnosisRecord = {
+    id: `diag_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+    patient_id: patientId,
+    diagnosis: data.diagnosis.trim(),
+    hospital_name: (data.hospitalName || "Bệnh viện / Phòng khám").trim(),
+    doctor_name: (data.doctorName || "Bác sĩ điều trị").trim(),
+    date: data.date || new Date().toLocaleDateString('vi-VN'),
+    revisit_days: data.revisitDays || 30,
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    // 1. Lưu vào localStorage để truy xuất tức thời và bảo toàn offline
+    const storageKey = `patient_diagnoses_${patientId}`;
+    const existingStr = localStorage.getItem(storageKey);
+    const existingList: DiagnosisRecord[] = existingStr ? JSON.parse(existingStr) : [];
+    
+    // Tránh trùng lặp chẩn đoán giống hệt nhau cùng ngày
+    const exists = existingList.some(r => r.diagnosis === newRecord.diagnosis && r.date === newRecord.date);
+    if (!exists) {
+      existingList.unshift(newRecord);
+      localStorage.setItem(storageKey, JSON.stringify(existingList));
+    }
+
+    // 2. Thử cập nhật vào bảng profiles nếu có
+    try {
+      await supabase
+        .from('profiles')
+        .update({
+          medical_notes: `Chẩn đoán gần nhất (${newRecord.date} - ${newRecord.hospital_name}): ${newRecord.diagnosis}`
+        })
+        .eq('id', patientId);
+    } catch {
+      // Bỏ qua nếu cột chưa được khai báo
+    }
+
+  } catch (err) {
+    console.error("saveDiagnosisRecord error:", err);
+  }
+}
+
+/**
+ * Lấy lịch sử chẩn đoán / tiền sử bệnh của bệnh nhân
+ */
+export function getDiagnosisRecords(patientId: string): DiagnosisRecord[] {
+  if (!patientId) return [];
+  try {
+    const storageKey = `patient_diagnoses_${patientId}`;
+    const existingStr = localStorage.getItem(storageKey);
+    return existingStr ? JSON.parse(existingStr) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Xóa một bản ghi chẩn đoán / tiền sử bệnh
+ */
+export function deleteDiagnosisRecord(patientId: string, recordId: string): void {
+  if (!patientId || !recordId) return;
+  try {
+    const storageKey = `patient_diagnoses_${patientId}`;
+    const existingStr = localStorage.getItem(storageKey);
+    if (!existingStr) return;
+    const existingList: DiagnosisRecord[] = JSON.parse(existingStr);
+    const updated = existingList.filter(r => r.id !== recordId);
+    localStorage.setItem(storageKey, JSON.stringify(updated));
+  } catch (err) {
+    console.error("deleteDiagnosisRecord error:", err);
+  }
+}
+

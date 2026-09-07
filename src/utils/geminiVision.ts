@@ -40,6 +40,8 @@ export interface ParsedMedication {
   duration_days: number;
   instructions: string;
   calculationNote?: string; // Giải thích cơ sở y khoa tính lộ trình
+  is_prn?: boolean; // Thuốc uống khi có triệu chứng / Khi đau (không ép đặt lịch cố định hàng ngày)
+  is_locked_by_doctor?: boolean; // Cố định theo chỉ định bác sĩ (không cho người nhà thêm bớt cữ tùy tiện)
 }
 
 export interface PrescriptionAnalysisResult {
@@ -73,8 +75,10 @@ export const CLINICAL_FALLBACK_RESULT: PrescriptionAnalysisResult = {
       times: ["08:00"],
       time: "Sáng (Sau ăn)",
       duration_days: 30,
+      is_prn: false,
+      is_locked_by_doctor: true,
       instructions: "Uống 1 lần mỗi ngày vào buổi sáng sau ăn 30 phút để ổn định huyết áp",
-      calculationNote: "Cấp 30 viên • Uống 1 viên/ngày -> Đủ lộ trình 30 ngày (Khớp lịch tái khám)"
+      calculationNote: "Cấp 30 viên • Cố định 30 ngày (1 viên/ngày) • Khớp lịch hẹn tái khám"
     },
     {
       name: "Paracetamol 500mg",
@@ -88,8 +92,10 @@ export const CLINICAL_FALLBACK_RESULT: PrescriptionAnalysisResult = {
       times: ["12:30"],
       time: "Khi đau (Sau ăn)",
       duration_days: 7,
+      is_prn: true,
+      is_locked_by_doctor: true,
       instructions: "Khi đau khớp gối, tối đa 3 lần/ngày (sau ăn), mỗi lần cách nhau 4-6 tiếng",
-      calculationNote: "Thuốc giảm đau triệu chứng đợt cấp • Đề xuất lộ trình 7 ngày theo dõi"
+      calculationNote: "Thuốc giảm đau dùng khi có triệu chứng đau • Không ép đặt báo thức cố định hàng ngày để tránh hại gan"
     },
     {
       name: "Vitamin C 1000mg",
@@ -103,8 +109,10 @@ export const CLINICAL_FALLBACK_RESULT: PrescriptionAnalysisResult = {
       times: ["08:30"],
       time: "Sáng (Sau ăn)",
       duration_days: 10,
+      is_prn: false,
+      is_locked_by_doctor: true,
       instructions: "Uống 1 lần mỗi ngày sau ăn sáng. Hòa tan hoàn toàn trong 200ml nước đun sôi để nguội",
-      calculationNote: "Cấp 10 viên sủi • Uống 1 viên/ngày -> Lộ trình chuẩn xác 10 ngày"
+      calculationNote: "Cấp đúng 10 viên sủi • Cố định lộ trình 10 ngày (1 viên/ngày)"
     },
     {
       name: "Omega-3 1000mg",
@@ -118,8 +126,10 @@ export const CLINICAL_FALLBACK_RESULT: PrescriptionAnalysisResult = {
       times: ["12:30"],
       time: "Trưa (Sau ăn)",
       duration_days: 30,
+      is_prn: false,
+      is_locked_by_doctor: true,
       instructions: "Uống 1 lần mỗi ngày ngay sau bữa ăn trưa để tối đa hóa hấp thu lipid",
-      calculationNote: "Cấp 30 viên nang mềm • Uống 1 viên/ngày -> Đủ lộ trình 30 ngày"
+      calculationNote: "Cấp 30 viên nang mềm • Cố định lộ trình 30 ngày (1 viên/ngày)"
     }
   ]
 };
