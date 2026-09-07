@@ -25,7 +25,35 @@ export const playAlarmTone = () => {
   }
 };
 
-export const speakVietnamese = (text: string) => {
+export interface SpeakOptions {
+  voiceId?: 'female_north' | 'male_north' | 'female_south' | 'male_south';
+  speed?: number;
+  pitch?: number;
+  volume?: number;
+}
+
+export const getSavedVoiceSettings = (): Required<SpeakOptions> => {
+  try {
+    const saved = localStorage.getItem('heymedi_voice_settings');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        voiceId: parsed.voiceId || 'female_north',
+        speed: parsed.speed || 0.85,
+        pitch: parsed.pitch || 1.12,
+        volume: parsed.volume || 90
+      };
+    }
+  } catch {}
+  return {
+    voiceId: 'female_north',
+    speed: 0.85,
+    pitch: 1.12,
+    volume: 90
+  };
+};
+
+export const speakVietnamese = (text: string, options?: SpeakOptions) => {
   if (!('speechSynthesis' in window)) {
     console.warn("Trình duyệt không hỗ trợ Web Speech API.");
     return;
@@ -34,25 +62,57 @@ export const speakVietnamese = (text: string) => {
   // Cancel any ongoing speech
   window.speechSynthesis.cancel();
 
+  const saved = getSavedVoiceSettings();
+  const voiceId = options?.voiceId || saved.voiceId;
+  const speed = options?.speed ?? saved.speed;
+  const volume = options?.volume ?? saved.volume;
+
+  // Tính pitch âm thanh phù hợp theo giới tính và vùng miền
+  let targetPitch = options?.pitch ?? saved.pitch;
+  if (!options?.pitch) {
+    if (voiceId === 'male_north') targetPitch = 0.82;
+    else if (voiceId === 'male_south') targetPitch = 0.88;
+    else if (voiceId === 'female_north') targetPitch = 1.15;
+    else if (voiceId === 'female_south') targetPitch = 1.05;
+  }
+
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'vi-VN';
-  utterance.rate = 0.9; // Slightly slower for elderly
-  utterance.pitch = 1.0;
+  utterance.rate = speed;
+  utterance.pitch = targetPitch;
+  utterance.volume = Math.max(0.1, Math.min(1.0, volume / 100));
 
-  // Try to find a Vietnamese voice if available
+  // Nhận diện và gán voice tự nhiên từ hệ điều hành / trình duyệt
   const voices = window.speechSynthesis.getVoices();
-  const viVoice = voices.find(v => v.lang.includes('vi') || v.lang.includes('VN'));
-  if (viVoice) {
-    utterance.voice = viVoice;
+  const viVoices = voices.filter(v => v.lang.includes('vi') || v.lang.includes('VN'));
+
+  if (viVoices.length > 0) {
+    if (voiceId.startsWith('male')) {
+      // Ưu tiên giọng Nam (NamMinh trên Windows/Edge hoặc tên chứa Male / Nam)
+      const maleVoice = viVoices.find(v => 
+        v.name.toLowerCase().includes('nam') || 
+        v.name.toLowerCase().includes('male') ||
+        v.name.toLowerCase().includes('minh')
+      );
+      utterance.voice = maleVoice || viVoices[0];
+    } else {
+      // Ưu tiên giọng Nữ (HoaiMy trên Windows/Edge hoặc tên chứa Female / My)
+      const femaleVoice = viVoices.find(v => 
+        v.name.toLowerCase().includes('my') || 
+        v.name.toLowerCase().includes('hoai') ||
+        v.name.toLowerCase().includes('female')
+      );
+      utterance.voice = femaleVoice || viVoices[0];
+    }
   }
 
   window.speechSynthesis.speak(utterance);
 };
 
-export const announceMedication = (medName: string, dosage: string) => {
+export const announceMedication = (medName: string, dosage: string, options?: SpeakOptions) => {
   playAlarmTone();
   setTimeout(() => {
-    speakVietnamese(`Đã đến giờ uống thuốc ${medName}, liều lượng ${dosage}. Ông bà uống thuốc sau ăn nhé!`);
+    speakVietnamese(`Đã đến giờ uống thuốc ${medName}, liều lượng ${dosage}. Ông bà uống thuốc sau ăn nhé!`, options);
   }, 800); // Speak after beep
 };
 

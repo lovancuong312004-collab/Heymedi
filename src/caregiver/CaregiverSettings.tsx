@@ -19,9 +19,13 @@ import {
   Cloud,
   RefreshCw,
   Phone,
-  Camera
+  Camera,
+  Volume2,
+  Type,
+  Pill
 } from "lucide-react";
 import { useFamily } from "../contexts/FamilyContext";
+import { useSettings, type VoiceId, type FontSize } from "../contexts/SettingsContext";
 import { supabase } from "../lib/supabase";
 import HealthProfileModal from "../screens/HealthProfileModal";
 import { cn } from "../lib/utils";
@@ -43,6 +47,17 @@ interface CaregiverMember {
 
 export default function CaregiverSettings({ user, onLogout }: Props) {
   const { linkedPatientId, patientInfo, refreshLink } = useFamily();
+  const { 
+    fontSize, 
+    setFontSize, 
+    language, 
+    setLanguage, 
+    voiceSettings, 
+    setVoiceSettings, 
+    t, 
+    testVoice 
+  } = useSettings();
+
   const [autoAlert, setAutoAlert] = useState(true);
   const [dailyAiReport, setDailyAiReport] = useState(true);
   const [aiVoiceCall, setAiVoiceCall] = useState(false);
@@ -73,13 +88,28 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
   const [showCaregiversModal, setShowCaregiversModal] = useState(false);
   const [showHealthProfileModal, setShowHealthProfileModal] = useState(false);
   
-  const [activeModal, setActiveModal] = useState<"language" | "sync" | "about" | "logout" | null>(null);
-  const [language, setLanguage] = useState<"vi" | "en">("vi");
+  const [activeModal, setActiveModal] = useState<"audio" | "fontSize" | "language" | "sync" | "about" | "logout" | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState("Vừa xong");
+  const [isTestingVoice, setIsTestingVoice] = useState(false);
 
   const meta = user?.user_metadata || {};
   const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Thành viên");
+
+  const currentVoiceLabel = {
+    female_north: t("voice.female_north"),
+    male_north: t("voice.male_north"),
+    female_south: t("voice.female_south"),
+    male_south: t("voice.male_south"),
+  }[voiceSettings.voiceId] || t("voice.female_north");
+
+  const handleTestVoiceClick = () => {
+    setIsTestingVoice(true);
+    testVoice(patientName);
+    setTimeout(() => {
+      setIsTestingVoice(false);
+    }, 2800);
+  };
 
   const fetchCoCaregivers = async () => {
     if (!linkedPatientId) {
@@ -188,7 +218,7 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
       
       {/* Header */}
       <div className="flex justify-center items-center mb-4 mt-2">
-        <h1 className="text-2xl font-bold text-[#1a2b4b]">Cài đặt người chăm sóc</h1>
+        <h1 className="text-2xl font-black text-[#1a2b4b]">{t("settings.caregiver_title")}</h1>
       </div>
 
       {/* Profile Card */}
@@ -396,10 +426,28 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
           </>
         )}
 
+        {/* Âm thanh & Giọng nói AI */}
+        <SettingRow
+          icon={<Volume2 size={20} />}
+          label={t("settings.sound_voice_ai")}
+          value={currentVoiceLabel}
+          hasBorder
+          onClick={() => setActiveModal("audio")}
+        />
+
+        {/* Cỡ chữ hiển thị */}
+        <SettingRow
+          icon={<Type size={20} />}
+          label={t("settings.font_size")}
+          value={fontSize === "normal" ? "16px" : fontSize === "large" ? "Chữ To (18px)" : "Rất To (20px)"}
+          hasBorder
+          onClick={() => setActiveModal("fontSize")}
+        />
+
         {/* Cloud Sync */}
         <SettingRow
           icon={<Cloud size={20} />}
-          label="Đồng bộ đám mây"
+          label={t("settings.cloud_sync")}
           value={lastSyncTime}
           hasBorder
           onClick={() => setActiveModal("sync")}
@@ -408,7 +456,7 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
         {/* Language */}
         <SettingRow
           icon={<Globe size={20} />}
-          label="Ngôn ngữ"
+          label={t("settings.language")}
           value={language === "vi" ? "Tiếng Việt" : "English"}
           hasBorder
           onClick={() => setActiveModal("language")}
@@ -417,7 +465,7 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
         {/* Version */}
         <SettingRow
           icon={<Info size={20} />}
-          label="Giới thiệu ứng dụng & Hỗ trợ"
+          label={t("settings.about")}
           value="v1.0.0"
           onClick={() => setActiveModal("about")}
         />
@@ -431,7 +479,7 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
           className="w-full bg-white text-danger border border-red-200 py-4 px-6 rounded-2xl font-bold text-base flex items-center justify-center gap-2 shadow-sm hover:bg-red-50 active:scale-[0.98] transition-all cursor-pointer"
         >
           <LogOut size={20} className="text-danger" strokeWidth={2.5} />
-          <span>Đăng xuất</span>
+          <span>{t("settings.logout")}</span>
         </button>
       </div>
 
@@ -536,18 +584,229 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
         </div>
       )}
 
-      {/* Sync Modal */}
+      {/* 1. Audio & Voice Settings Modal */}
+      {activeModal === "audio" && (
+        <ModalWrapper title={t("voice.modal_title")} onClose={() => setActiveModal(null)}>
+          <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+            {/* Lựa chọn giọng đọc Nam / Nữ */}
+            <div>
+              <label className="text-xs font-black text-[#1a2b4b] uppercase tracking-wider block mb-2">
+                {t("voice.choose_voice")}
+              </label>
+
+              <div className="space-y-2">
+                {[
+                  {
+                    id: "female_north",
+                    icon: "👩",
+                    title: t("voice.female_north"),
+                    desc: t("voice.female_north_desc"),
+                  },
+                  {
+                    id: "male_north",
+                    icon: "👨",
+                    title: t("voice.male_north"),
+                    desc: t("voice.male_north_desc"),
+                  },
+                  {
+                    id: "female_south",
+                    icon: "👩",
+                    title: t("voice.female_south"),
+                    desc: t("voice.female_south_desc"),
+                  },
+                  {
+                    id: "male_south",
+                    icon: "👨",
+                    title: t("voice.male_south"),
+                    desc: t("voice.male_south_desc"),
+                  }
+                ].map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => setVoiceSettings({ voiceId: item.id as VoiceId })}
+                    className={cn(
+                      "p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all",
+                      voiceSettings.voiceId === item.id
+                        ? "bg-blue-50/90 border-primary shadow-xs ring-1 ring-primary/30"
+                        : "bg-gray-50/60 border-gray-200 hover:bg-gray-100/60"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{item.icon}</span>
+                      <div>
+                        <p className={cn("text-sm font-bold", voiceSettings.voiceId === item.id ? "text-primary" : "text-[#1a2b4b]")}>
+                          {item.title}
+                        </p>
+                        <p className="text-[11px] text-gray-500">{item.desc}</p>
+                      </div>
+                    </div>
+                    {voiceSettings.voiceId === item.id && (
+                      <div className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center shrink-0">
+                        <Check size={14} strokeWidth={3} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Điều chỉnh Tốc độ đọc */}
+            <div>
+              <label className="text-xs font-black text-[#1a2b4b] uppercase tracking-wider block mb-2">
+                {t("voice.speed")}
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { speed: 0.8, label: t("voice.speed_slow") },
+                  { speed: 0.85, label: t("voice.speed_normal") },
+                  { speed: 1.0, label: t("voice.speed_fast") }
+                ].map((item) => (
+                  <button
+                    key={item.speed}
+                    type="button"
+                    onClick={() => setVoiceSettings({ speed: item.speed })}
+                    className={cn(
+                      "py-2.5 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center",
+                      Math.abs(voiceSettings.speed - item.speed) < 0.04
+                        ? "bg-primary text-white border-primary shadow-sm"
+                        : "bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100"
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Điều chỉnh Âm lượng chuông / loa */}
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-xs font-black text-[#1a2b4b] uppercase tracking-wider">
+                  {t("voice.volume")}
+                </span>
+                <span className="text-sm font-black text-primary font-mono">{voiceSettings.volume}%</span>
+              </div>
+              <input 
+                type="range" 
+                min="20" 
+                max="100" 
+                value={voiceSettings.volume} 
+                onChange={(e) => setVoiceSettings({ volume: Number(e.target.value) })} 
+                className="w-full accent-primary h-2.5 bg-gray-200 rounded-lg cursor-pointer"
+              />
+            </div>
+
+            {/* Nút Nghe thử trực tiếp */}
+            <button
+              onClick={handleTestVoiceClick}
+              disabled={isTestingVoice}
+              className={cn(
+                "w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95",
+                isTestingVoice
+                  ? "bg-emerald-600 text-white shadow-emerald-600/25"
+                  : "bg-primary text-white shadow-primary/25 hover:bg-blue-700"
+              )}
+            >
+              <Volume2 size={18} className={cn(isTestingVoice && "animate-pulse")} />
+              <span>{isTestingVoice ? t("voice.testing") : t("voice.test_button")}</span>
+            </button>
+          </div>
+        </ModalWrapper>
+      )}
+
+      {/* 2. Font Size Settings Modal */}
+      {activeModal === "fontSize" && (
+        <ModalWrapper title={t("font.modal_title")} onClose={() => setActiveModal(null)}>
+          <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+            <div className="space-y-2.5">
+              {[
+                { 
+                  key: "normal", 
+                  title: t("font.normal"), 
+                  desc: t("font.normal_desc") 
+                },
+                { 
+                  key: "large", 
+                  title: t("font.large"), 
+                  desc: t("font.large_desc") 
+                },
+                { 
+                  key: "xl", 
+                  title: t("font.xl"), 
+                  desc: t("font.xl_desc") 
+                }
+              ].map((item) => (
+                <div
+                  key={item.key}
+                  onClick={() => setFontSize(item.key as FontSize)}
+                  className={cn(
+                    "p-3.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-all",
+                    fontSize === item.key 
+                      ? "bg-blue-50/90 border-primary text-primary shadow-xs ring-1 ring-primary/30" 
+                      : "bg-gray-50/60 border-gray-200 hover:bg-gray-100"
+                  )}
+                >
+                  <div>
+                    <span className={cn("text-base font-bold block", fontSize === item.key ? "text-primary" : "text-[#1a2b4b]")}>
+                      {item.title}
+                    </span>
+                    <span className="text-xs text-gray-500 font-normal mt-0.5 block">
+                      {item.desc}
+                    </span>
+                  </div>
+                  {fontSize === item.key && (
+                    <div className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center shrink-0">
+                      <Check size={14} strokeWidth={3} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* KHUNG XEM TRƯỚC TRỰC TIẾP */}
+            <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-200/70 space-y-2">
+              <div className="flex items-center gap-1.5 text-primary text-xs font-black uppercase tracking-wider">
+                <Sparkles size={15} />
+                <span>{t("font.preview_title")}</span>
+              </div>
+
+              <div className="bg-white rounded-xl p-3 border border-gray-200/80 shadow-xs flex items-start gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-blue-100 text-primary flex items-center justify-center shrink-0 font-bold">
+                  <Pill size={18} />
+                </div>
+                <div>
+                  <p className="font-extrabold text-[#1a2b4b] leading-tight">
+                    {language === 'en' ? "Blood Pressure Medication" : "Thuốc Huyết Áp Amlodipine 5mg"}
+                  </p>
+                  <p className="text-gray-600 mt-1 leading-relaxed">
+                    {t("font.preview_text")}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveModal(null)}
+              className="w-full py-3.5 rounded-2xl bg-[#1a2b4b] text-white font-bold text-sm shadow-md hover:bg-black active:scale-95 transition-all cursor-pointer"
+            >
+              {language === 'en' ? "Apply & Close" : "Áp dụng & Đóng"}
+            </button>
+          </div>
+        </ModalWrapper>
+      )}
+
+      {/* 3. Sync Modal */}
       {activeModal === "sync" && (
-        <ModalWrapper title="Đồng bộ đám mây" onClose={() => setActiveModal(null)}>
+        <ModalWrapper title={t("sync.modal_title")} onClose={() => setActiveModal(null)}>
           <div className="space-y-4 text-center">
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 leading-relaxed text-left">
               <p className="font-bold flex items-center gap-1.5 mb-1 text-emerald-900">
-                <Cloud size={16} /> Đồng bộ Realtime với người bệnh:
+                <Cloud size={16} /> {t("sync.status")}
               </p>
-              <span>Lịch thuốc, thông báo khẩn cấp SOS và hồ sơ bệnh án được cập nhật 2 chiều tự động tức thì thông qua Supabase Realtime.</span>
+              <span>{t("sync.desc")}</span>
             </div>
 
-            <p className="text-xs text-gray-500">Lần đồng bộ gần nhất: <b>{lastSyncTime}</b></p>
+            <p className="text-xs text-gray-500">{t("sync.last_time")} <b>{lastSyncTime}</b></p>
 
             <button
               onClick={handleManualSync}
@@ -555,19 +814,19 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
               className="w-full py-3.5 rounded-2xl bg-primary text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-primary/25 hover:bg-blue-700 active:scale-95 transition-all cursor-pointer"
             >
               <RefreshCw size={16} className={cn(isSyncing && "animate-spin")} />
-              <span>{isSyncing ? "Đang đồng bộ..." : "Đồng bộ lại ngay"}</span>
+              <span>{isSyncing ? t("sync.syncing") : t("sync.button")}</span>
             </button>
           </div>
         </ModalWrapper>
       )}
 
-      {/* Language Modal */}
+      {/* 4. Language Modal */}
       {activeModal === "language" && (
-        <ModalWrapper title="Chọn ngôn ngữ" onClose={() => setActiveModal(null)}>
-          <div className="space-y-2.5">
+        <ModalWrapper title={t("lang.modal_title")} onClose={() => setActiveModal(null)}>
+          <div className="space-y-3">
             {[
-              { key: "vi", label: "Tiếng Việt (Mặc định)" },
-              { key: "en", label: "English (US)" }
+              { key: "vi", flag: "🇻🇳", label: t("lang.vi"), sub: "Giao diện & Giọng nói thuần Việt" },
+              { key: "en", flag: "🇺🇸", label: t("lang.en"), sub: "English interface & assistance" }
             ].map((item) => (
               <div
                 key={item.key}
@@ -576,21 +835,35 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
                   setActiveModal(null);
                 }}
                 className={cn(
-                  "p-3.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-colors",
-                  language === item.key ? "bg-blue-50 border-primary text-primary font-bold" : "bg-gray-50 border-gray-200 text-gray-700"
+                  "p-4 rounded-2xl border flex items-center justify-between cursor-pointer transition-all",
+                  language === item.key 
+                    ? "bg-blue-50/90 border-primary text-primary shadow-xs ring-1 ring-primary/30" 
+                    : "bg-gray-50/60 border-gray-200 hover:bg-gray-100"
                 )}
               >
-                <span>{item.label}</span>
-                {language === item.key && <Check size={18} />}
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">{item.flag}</span>
+                  <div>
+                    <span className={cn("text-base font-bold block", language === item.key ? "text-primary" : "text-[#1a2b4b]")}>
+                      {item.label}
+                    </span>
+                    <span className="text-xs text-gray-500 font-normal">{item.sub}</span>
+                  </div>
+                </div>
+                {language === item.key && (
+                  <div className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center shrink-0">
+                    <Check size={14} strokeWidth={3} />
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </ModalWrapper>
       )}
 
-      {/* About Modal */}
+      {/* 5. About Modal */}
       {activeModal === "about" && (
-        <ModalWrapper title="Giới thiệu & Hỗ trợ kỹ thuật" onClose={() => setActiveModal(null)}>
+        <ModalWrapper title={t("settings.about")} onClose={() => setActiveModal(null)}>
           <div className="space-y-3 text-center text-xs text-gray-600">
             <div className="w-14 h-14 rounded-2xl bg-primary text-white flex items-center justify-center font-black text-xl mx-auto shadow-md shadow-primary/30">
               HM
@@ -609,25 +882,25 @@ export default function CaregiverSettings({ user, onLogout }: Props) {
         </ModalWrapper>
       )}
 
-      {/* Logout Modal */}
+      {/* 6. Logout Modal */}
       {activeModal === "logout" && (
-        <ModalWrapper title="Xác nhận đăng xuất" onClose={() => setActiveModal(null)}>
+        <ModalWrapper title={t("logout.confirm_title")} onClose={() => setActiveModal(null)}>
           <div className="text-center space-y-4">
             <p className="text-sm font-semibold text-gray-700">
-              Bạn có chắc chắn muốn đăng xuất khỏi ứng dụng Heymedi không?
+              {t("logout.confirm_msg")}
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setActiveModal(null)}
                 className="flex-1 py-3 rounded-xl border border-gray-200 font-bold text-sm text-gray-600 hover:bg-gray-50 cursor-pointer"
               >
-                Hủy
+                {t("logout.cancel")}
               </button>
               <button
                 onClick={onLogout}
                 className="flex-1 py-3 rounded-xl bg-danger text-white font-bold text-sm shadow-md hover:bg-red-700 cursor-pointer"
               >
-                Đăng xuất
+                {t("logout.confirm")}
               </button>
             </div>
           </div>

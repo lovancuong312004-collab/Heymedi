@@ -7,7 +7,20 @@
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    font-size: 18px; /* Mặc định chữ To cho Heymedi */
   }
+
+  /* Cấu hình cỡ chữ ứng dụng động */
+  html[data-font-size="normal"] {
+    font-size: 16px;
+  }
+  html[data-font-size="large"] {
+    font-size: 18px;
+  }
+  html[data-font-size="xl"] {
+    font-size: 20px;
+  }
+
   body {
     @apply bg-[#F4F7FB] text-gray-900;
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;

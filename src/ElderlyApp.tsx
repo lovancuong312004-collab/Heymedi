@@ -10,6 +10,7 @@ import CallModal from "./caregiver/CallModal";
 import { silentAudioUnlock } from "./utils/voiceAssistant";
 import { recordMissedCall } from "./services/missedCallService";
 import { supabase } from "./lib/supabase";
+import { useSettings } from "./contexts/SettingsContext";
 
 interface Props {
   user: any;
@@ -19,6 +20,7 @@ interface Props {
 type ElderlyTab = "home" | "meds" | "family" | "settings";
 
 export default function ElderlyApp({ user, onLogout }: Props) {
+  const { t } = useSettings();
   const [activeTab, setActiveTab] = useState<ElderlyTab>("home");
 
   // Realtime Pill Verification Mode (Cấu hình minh chứng ảnh uống thuốc từ người chăm sóc)
@@ -231,10 +233,10 @@ export default function ElderlyApp({ user, onLogout }: Props) {
 
       {/* Bottom Navigation */}
       <div className="absolute bottom-0 w-full bg-white/95 backdrop-blur-sm border-t border-gray-100 px-2 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
-        <NavItem icon={<Home size={22} />} label="Trang chủ"    isActive={activeTab === "home"}     onClick={() => setActiveTab("home")} />
-        <NavItem icon={<Pill size={22} />} label="Thuốc của tôi" isActive={activeTab === "meds"}     onClick={() => setActiveTab("meds")} />
-        <NavItem icon={<Users size={22} />} label="Gia đình"   isActive={activeTab === "family"}   onClick={() => setActiveTab("family")} />
-        <NavItem icon={<Settings size={22} />} label="Cài đặt" isActive={activeTab === "settings"} onClick={() => setActiveTab("settings")} />
+        <NavItem icon={<Home size={22} />} label={t("nav.home")} isActive={activeTab === "home"} onClick={() => setActiveTab("home")} />
+        <NavItem icon={<Pill size={22} />} label={t("nav.meds")} isActive={activeTab === "meds"} onClick={() => setActiveTab("meds")} />
+        <NavItem icon={<Users size={22} />} label={t("nav.family")} isActive={activeTab === "family"} onClick={() => setActiveTab("family")} />
+        <NavItem icon={<Settings size={22} />} label={t("nav.settings")} isActive={activeTab === "settings"} onClick={() => setActiveTab("settings")} />
       </div>
     </div>
   );

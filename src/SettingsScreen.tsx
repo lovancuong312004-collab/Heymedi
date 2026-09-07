@@ -7,15 +7,17 @@ import {
   HelpCircle, 
   Info, 
   ChevronRight, 
-  LogOut,
-  X,
-  Check,
+  LogOut, 
+  X, 
+  Check, 
+  RefreshCw, 
+  Type, 
+  Sparkles,
   Phone,
-  RefreshCw,
-  Type
+  Pill
 } from "lucide-react";
 import HealthProfileModal from "./screens/HealthProfileModal";
-import { speakVietnamese, playAlarmTone } from "./utils/voiceAssistant";
+import { useSettings, type VoiceId, type FontSize } from "./contexts/SettingsContext";
 import { cn } from "./lib/utils";
 
 interface Props {
@@ -28,39 +30,64 @@ export default function SettingsScreen({ user, onLogout }: Props) {
   const rawName = meta.full_name || (user?.email ? user.email.split("@")[0] : "Bác");
   const displayName = rawName.toLowerCase().startsWith("bác ") ? rawName : `Bác ${rawName}`;
 
+  const { 
+    fontSize, 
+    setFontSize, 
+    language, 
+    setLanguage, 
+    voiceSettings, 
+    setVoiceSettings, 
+    t, 
+    testVoice 
+  } = useSettings();
+
   // Modals state
   const [isHealthProfileOpen, setIsHealthProfileOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<
     "audio" | "fontSize" | "language" | "sync" | "guide" | "about" | "logout" | null
   >(null);
 
-  // Settings values state
-  const [volume, setVolume] = useState(90);
-  const [fontSize, setFontSize] = useState<"normal" | "large" | "xl">("large");
-  const [language, setLanguage] = useState<"vi" | "en">("vi");
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState("Vừa xong");
+  const [isTestingVoice, setIsTestingVoice] = useState(false);
 
-  const handleTestVoice = () => {
-    playAlarmTone();
+  const handleTestVoiceClick = () => {
+    setIsTestingVoice(true);
+    testVoice(displayName);
     setTimeout(() => {
-      speakVietnamese(`Xin chào ${displayName}! Âm lượng loa của Bác hiện tại nghe đã rõ ràng và vừa tai chưa ạ?`);
-    }, 400);
+      setIsTestingVoice(false);
+    }, 2800);
   };
 
   const handleManualSync = () => {
     setIsSyncing(true);
     setTimeout(() => {
       setIsSyncing(false);
-      setLastSyncTime(new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }));
-      alert("Đồng bộ dữ liệu thời gian thực thành công!");
+      setLastSyncTime(new Date().toLocaleTimeString(language === 'en' ? "en-US" : "vi-VN", { hour: "2-digit", minute: "2-digit" }));
+      alert(t("sync.success"));
     }, 1200);
   };
 
+  // Tên hiển thị giọng đọc hiện tại
+  const currentVoiceLabel = {
+    female_north: t("voice.female_north"),
+    male_north: t("voice.male_north"),
+    female_south: t("voice.female_south"),
+    male_south: t("voice.male_south"),
+  }[voiceSettings.voiceId] || t("voice.female_north");
+
+  // Tên hiển thị cỡ chữ hiện tại
+  const currentFontLabel = {
+    normal: t("font.normal"),
+    large: t("font.large"),
+    xl: t("font.xl"),
+  }[fontSize] || t("font.large");
+
   return (
     <div className="p-5 flex flex-col min-h-full bg-[#F4F7FB] animate-fade-in select-none pb-24">
+      {/* Header */}
       <div className="flex justify-center items-center mb-4 mt-2">
-        <h1 className="text-2xl font-bold text-[#1a2b4b]">Cài đặt</h1>
+        <h1 className="text-2xl font-black text-[#1a2b4b]">{t("settings.title")}</h1>
       </div>
 
       {/* Profile Card */}
@@ -79,10 +106,10 @@ export default function SettingsScreen({ user, onLogout }: Props) {
           <div className="flex items-center gap-2">
             <h2 className="text-[#1a2b4b] font-bold text-xl leading-tight truncate">{displayName}</h2>
             <span className="text-[10px] font-bold bg-[#EBF1FF] text-primary px-2 py-0.5 rounded-full shrink-0">
-              Hồ sơ
+              {t("settings.profile_sub")}
             </span>
           </div>
-          <p className="text-gray-500 text-sm mt-0.5">{meta.phone || "Bấm để cập nhật hồ sơ & sức khỏe"}</p>
+          <p className="text-gray-500 text-sm mt-0.5">{meta.phone || (language === 'en' ? "Tap to edit health profile" : "Bấm để cập nhật hồ sơ & sức khỏe")}</p>
         </div>
         <ChevronRight className="text-gray-400 shrink-0" size={20} />
       </div>
@@ -91,48 +118,48 @@ export default function SettingsScreen({ user, onLogout }: Props) {
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden mb-6">
         <SettingItem 
           icon={<User size={22} />} 
-          label="Hồ sơ sức khỏe & Bệnh nền" 
-          value="Xem & Sửa"
+          label={t("settings.profile")} 
+          value={t("settings.profile_sub")}
           onClick={() => setIsHealthProfileOpen(true)}
           hasBorder 
         />
         <SettingItem 
           icon={<Volume2 size={22} />} 
-          label="Âm thanh & Giọng nói" 
-          value={`${volume}%`}
+          label={t("settings.sound_voice")} 
+          value={currentVoiceLabel}
           onClick={() => setActiveModal("audio")}
           hasBorder 
         />
         <SettingItem 
           icon={<Type size={22} />} 
-          label="Cỡ chữ hiển thị" 
-          value={fontSize === "normal" ? "Bình thường" : fontSize === "large" ? "Chữ To" : "Rất To"}
+          label={t("settings.font_size")} 
+          value={currentFontLabel}
           onClick={() => setActiveModal("fontSize")}
           hasBorder 
         />
         <SettingItem 
           icon={<Globe size={22} />} 
-          label="Ngôn ngữ" 
+          label={t("settings.language")} 
           value={language === "vi" ? "Tiếng Việt" : "English"} 
           onClick={() => setActiveModal("language")}
           hasBorder 
         />
         <SettingItem 
           icon={<Cloud size={22} />} 
-          label="Đồng bộ đám mây" 
+          label={t("settings.cloud_sync")} 
           value={lastSyncTime}
           onClick={() => setActiveModal("sync")}
           hasBorder 
         />
         <SettingItem 
           icon={<HelpCircle size={22} />} 
-          label="Hướng dẫn sử dụng" 
+          label={t("settings.guide")} 
           onClick={() => setActiveModal("guide")}
           hasBorder 
         />
         <SettingItem 
           icon={<Info size={22} />} 
-          label="Giới thiệu & Hỗ trợ kỹ thuật" 
+          label={t("settings.about")} 
           value="v1.0.0"
           onClick={() => setActiveModal("about")}
         />
@@ -145,7 +172,7 @@ export default function SettingsScreen({ user, onLogout }: Props) {
           className="w-full bg-white text-danger border border-red-200 py-4 px-6 rounded-2xl font-bold text-base flex items-center justify-center gap-2 shadow-sm hover:bg-red-50 active:scale-[0.98] transition-all cursor-pointer"
         >
           <LogOut size={20} className="text-danger" strokeWidth={2.5} />
-          <span>Đăng xuất</span>
+          <span>{t("settings.logout")}</span>
         </button>
       </div>
 
@@ -156,71 +183,227 @@ export default function SettingsScreen({ user, onLogout }: Props) {
         user={user} 
       />
 
-      {/* 1. Audio Modal */}
+      {/* 1. Audio & Voice Settings Modal */}
       {activeModal === "audio" && (
-        <ModalWrapper title="Âm thanh & Giọng nói" onClose={() => setActiveModal(null)}>
-          <div className="space-y-4">
+        <ModalWrapper title={t("voice.modal_title")} onClose={() => setActiveModal(null)}>
+          <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+            
+            {/* Lựa chọn giọng đọc Nam / Nữ */}
             <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm font-bold text-[#1a2b4b]">Âm lượng chuông nhắc:</span>
-                <span className="text-sm font-black text-primary">{volume}%</span>
+              <label className="text-xs font-black text-[#1a2b4b] uppercase tracking-wider block mb-2">
+                {t("voice.choose_voice")}
+              </label>
+
+              <div className="space-y-2">
+                {[
+                  {
+                    id: "female_north",
+                    icon: "👩",
+                    title: t("voice.female_north"),
+                    desc: t("voice.female_north_desc"),
+                  },
+                  {
+                    id: "male_north",
+                    icon: "👨",
+                    title: t("voice.male_north"),
+                    desc: t("voice.male_north_desc"),
+                  },
+                  {
+                    id: "female_south",
+                    icon: "👩",
+                    title: t("voice.female_south"),
+                    desc: t("voice.female_south_desc"),
+                  },
+                  {
+                    id: "male_south",
+                    icon: "👨",
+                    title: t("voice.male_south"),
+                    desc: t("voice.male_south_desc"),
+                  }
+                ].map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => setVoiceSettings({ voiceId: item.id as VoiceId })}
+                    className={cn(
+                      "p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all",
+                      voiceSettings.voiceId === item.id
+                        ? "bg-blue-50/90 border-primary shadow-xs ring-1 ring-primary/30"
+                        : "bg-gray-50/60 border-gray-200 hover:bg-gray-100/60"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{item.icon}</span>
+                      <div>
+                        <p className={cn("text-sm font-bold", voiceSettings.voiceId === item.id ? "text-primary" : "text-[#1a2b4b]")}>
+                          {item.title}
+                        </p>
+                        <p className="text-[11px] text-gray-500">{item.desc}</p>
+                      </div>
+                    </div>
+                    {voiceSettings.voiceId === item.id && (
+                      <div className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center shrink-0">
+                        <Check size={14} strokeWidth={3} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Điều chỉnh Tốc độ đọc */}
+            <div>
+              <label className="text-xs font-black text-[#1a2b4b] uppercase tracking-wider block mb-2">
+                {t("voice.speed")}
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { speed: 0.8, label: t("voice.speed_slow") },
+                  { speed: 0.85, label: t("voice.speed_normal") },
+                  { speed: 1.0, label: t("voice.speed_fast") }
+                ].map((item) => (
+                  <button
+                    key={item.speed}
+                    type="button"
+                    onClick={() => setVoiceSettings({ speed: item.speed })}
+                    className={cn(
+                      "py-2.5 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center",
+                      Math.abs(voiceSettings.speed - item.speed) < 0.04
+                        ? "bg-primary text-white border-primary shadow-sm"
+                        : "bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100"
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Điều chỉnh Âm lượng chuông / loa */}
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-xs font-black text-[#1a2b4b] uppercase tracking-wider">
+                  {t("voice.volume")}
+                </span>
+                <span className="text-sm font-black text-primary font-mono">{voiceSettings.volume}%</span>
               </div>
               <input 
                 type="range" 
                 min="20" 
                 max="100" 
-                value={volume} 
-                onChange={(e) => setVolume(Number(e.target.value))} 
-                className="w-full accent-primary h-2 bg-gray-200 rounded-lg cursor-pointer"
+                value={voiceSettings.volume} 
+                onChange={(e) => setVoiceSettings({ volume: Number(e.target.value) })} 
+                className="w-full accent-primary h-2.5 bg-gray-200 rounded-lg cursor-pointer"
               />
             </div>
 
+            {/* Nút Nghe thử trực tiếp */}
             <button
-              onClick={handleTestVoice}
-              className="w-full py-3.5 rounded-2xl bg-primary text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-primary/25 hover:bg-blue-700 active:scale-95 transition-all cursor-pointer"
+              onClick={handleTestVoiceClick}
+              disabled={isTestingVoice}
+              className={cn(
+                "w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95",
+                isTestingVoice
+                  ? "bg-emerald-600 text-white shadow-emerald-600/25"
+                  : "bg-primary text-white shadow-primary/25 hover:bg-blue-700"
+              )}
             >
-              <Volume2 size={18} />
-              <span>Thử phát âm thanh & Giọng nói AI</span>
+              <Volume2 size={18} className={cn(isTestingVoice && "animate-pulse")} />
+              <span>{isTestingVoice ? t("voice.testing") : t("voice.test_button")}</span>
             </button>
           </div>
         </ModalWrapper>
       )}
 
-      {/* 2. Font Size Modal */}
+      {/* 2. Font Size Settings Modal (Cỡ chữ hiển thị) */}
       {activeModal === "fontSize" && (
-        <ModalWrapper title="Cỡ chữ hiển thị" onClose={() => setActiveModal(null)}>
-          <div className="space-y-2.5">
-            {[
-              { key: "normal", label: "Tiêu chuẩn (Gọn gàng)" },
-              { key: "large", label: "Chữ To (Khuyên dùng cho người già)" },
-              { key: "xl", label: "Rất To (Dễ đọc nhất)" }
-            ].map((item) => (
-              <div
-                key={item.key}
-                onClick={() => {
-                  setFontSize(item.key as any);
-                  setActiveModal(null);
-                }}
-                className={cn(
-                  "p-3.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-colors",
-                  fontSize === item.key ? "bg-blue-50 border-primary text-primary font-bold" : "bg-gray-50 border-gray-200 text-gray-700"
-                )}
-              >
-                <span>{item.label}</span>
-                {fontSize === item.key && <Check size={18} />}
+        <ModalWrapper title={t("font.modal_title")} onClose={() => setActiveModal(null)}>
+          <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+            
+            {/* Lựa chọn cỡ chữ */}
+            <div className="space-y-2.5">
+              {[
+                { 
+                  key: "normal", 
+                  title: t("font.normal"), 
+                  desc: t("font.normal_desc") 
+                },
+                { 
+                  key: "large", 
+                  title: t("font.large"), 
+                  desc: t("font.large_desc") 
+                },
+                { 
+                  key: "xl", 
+                  title: t("font.xl"), 
+                  desc: t("font.xl_desc") 
+                }
+              ].map((item) => (
+                <div
+                  key={item.key}
+                  onClick={() => setFontSize(item.key as FontSize)}
+                  className={cn(
+                    "p-3.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-all",
+                    fontSize === item.key 
+                      ? "bg-blue-50/90 border-primary text-primary shadow-xs ring-1 ring-primary/30" 
+                      : "bg-gray-50/60 border-gray-200 hover:bg-gray-100"
+                  )}
+                >
+                  <div>
+                    <span className={cn("text-base font-bold block", fontSize === item.key ? "text-primary" : "text-[#1a2b4b]")}>
+                      {item.title}
+                    </span>
+                    <span className="text-xs text-gray-500 font-normal mt-0.5 block">
+                      {item.desc}
+                    </span>
+                  </div>
+                  {fontSize === item.key && (
+                    <div className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center shrink-0">
+                      <Check size={14} strokeWidth={3} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* KHUNG XEM TRƯỚC TRỰC TIẾP (LIVE PREVIEW) */}
+            <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-200/70 space-y-2">
+              <div className="flex items-center gap-1.5 text-primary text-xs font-black uppercase tracking-wider">
+                <Sparkles size={15} />
+                <span>{t("font.preview_title")}</span>
               </div>
-            ))}
+
+              <div className="bg-white rounded-xl p-3 border border-gray-200/80 shadow-xs flex items-start gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-blue-100 text-primary flex items-center justify-center shrink-0 font-bold">
+                  <Pill size={18} />
+                </div>
+                <div>
+                  <p className="font-extrabold text-[#1a2b4b] leading-tight">
+                    {language === 'en' ? "Blood Pressure Medication" : "Thuốc Huyết Áp Amlodipine 5mg"}
+                  </p>
+                  <p className="text-gray-600 mt-1 leading-relaxed">
+                    {t("font.preview_text")}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveModal(null)}
+              className="w-full py-3.5 rounded-2xl bg-[#1a2b4b] text-white font-bold text-sm shadow-md hover:bg-black active:scale-95 transition-all cursor-pointer"
+            >
+              {language === 'en' ? "Apply & Close" : "Áp dụng & Đóng"}
+            </button>
           </div>
         </ModalWrapper>
       )}
 
-      {/* 3. Language Modal */}
+      {/* 3. Language Modal (Chọn ngôn ngữ) */}
       {activeModal === "language" && (
-        <ModalWrapper title="Chọn ngôn ngữ" onClose={() => setActiveModal(null)}>
-          <div className="space-y-2.5">
+        <ModalWrapper title={t("lang.modal_title")} onClose={() => setActiveModal(null)}>
+          <div className="space-y-3">
             {[
-              { key: "vi", label: "Tiếng Việt (Mặc định)" },
-              { key: "en", label: "English (US)" }
+              { key: "vi", flag: "🇻🇳", label: t("lang.vi"), sub: "Giao diện & Giọng nói thuần Việt" },
+              { key: "en", flag: "🇺🇸", label: t("lang.en"), sub: "English interface & assistance" }
             ].map((item) => (
               <div
                 key={item.key}
@@ -229,30 +412,44 @@ export default function SettingsScreen({ user, onLogout }: Props) {
                   setActiveModal(null);
                 }}
                 className={cn(
-                  "p-3.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-colors",
-                  language === item.key ? "bg-blue-50 border-primary text-primary font-bold" : "bg-gray-50 border-gray-200 text-gray-700"
+                  "p-4 rounded-2xl border flex items-center justify-between cursor-pointer transition-all",
+                  language === item.key 
+                    ? "bg-blue-50/90 border-primary text-primary shadow-xs ring-1 ring-primary/30" 
+                    : "bg-gray-50/60 border-gray-200 hover:bg-gray-100"
                 )}
               >
-                <span>{item.label}</span>
-                {language === item.key && <Check size={18} />}
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">{item.flag}</span>
+                  <div>
+                    <span className={cn("text-base font-bold block", language === item.key ? "text-primary" : "text-[#1a2b4b]")}>
+                      {item.label}
+                    </span>
+                    <span className="text-xs text-gray-500 font-normal">{item.sub}</span>
+                  </div>
+                </div>
+                {language === item.key && (
+                  <div className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center shrink-0">
+                    <Check size={14} strokeWidth={3} />
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </ModalWrapper>
       )}
 
-      {/* 4. Sync Modal */}
+      {/* 4. Cloud Sync Modal */}
       {activeModal === "sync" && (
-        <ModalWrapper title="Đồng bộ & Lưu trữ đám mây" onClose={() => setActiveModal(null)}>
+        <ModalWrapper title={t("sync.modal_title")} onClose={() => setActiveModal(null)}>
           <div className="space-y-4 text-center">
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 leading-relaxed text-left">
               <p className="font-bold flex items-center gap-1.5 mb-1 text-emerald-900">
-                <Cloud size={16} /> Dữ liệu được kết nối thời gian thực:
+                <Cloud size={16} /> {t("sync.status")}
               </p>
-              <span>Mọi thay đổi về lịch uống thuốc, hồ sơ sức khỏe và trạng thái uống thuốc đều tự động đồng bộ ngay lập tức với ứng dụng của con cái.</span>
+              <span>{t("sync.desc")}</span>
             </div>
 
-            <p className="text-xs text-gray-500">Lần đồng bộ gần nhất: <b>{lastSyncTime}</b></p>
+            <p className="text-xs text-gray-500">{t("sync.last_time")} <b>{lastSyncTime}</b></p>
 
             <button
               onClick={handleManualSync}
@@ -260,31 +457,27 @@ export default function SettingsScreen({ user, onLogout }: Props) {
               className="w-full py-3.5 rounded-2xl bg-primary text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-primary/25 hover:bg-blue-700 active:scale-95 transition-all cursor-pointer"
             >
               <RefreshCw size={16} className={cn(isSyncing && "animate-spin")} />
-              <span>{isSyncing ? "Đang đồng bộ..." : "Đồng bộ dữ liệu ngay"}</span>
+              <span>{isSyncing ? t("sync.syncing") : t("sync.button")}</span>
             </button>
           </div>
         </ModalWrapper>
       )}
 
-      {/* 5. Guide Modal */}
+      {/* 5. User Guide Modal */}
       {activeModal === "guide" && (
-        <ModalWrapper title="Hướng dẫn sử dụng ứng dụng" onClose={() => setActiveModal(null)}>
+        <ModalWrapper title={t("settings.guide")} onClose={() => setActiveModal(null)}>
           <div className="space-y-3 text-xs leading-relaxed text-gray-700 max-h-[60vh] overflow-y-auto pr-1">
             <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100">
-              <p className="font-bold text-primary mb-1">1. Xem lịch uống thuốc:</p>
-              <span>Ở Trang chủ hoặc mục "Thuốc của tôi", Bác có thể xem rõ cữ thuốc tiếp theo cần uống, liều lượng và cách dùng (uống sau ăn hoặc trước ăn).</span>
+              <p className="font-bold text-primary mb-1">1. {language === 'en' ? "View Medication Schedule:" : "Xem lịch uống thuốc:"}</p>
+              <span>{language === 'en' ? "On Home screen or 'My Meds', you can see your upcoming doses, quantity, and meal instructions (before/after meals)." : "Ở Trang chủ hoặc mục 'Thuốc của tôi', Bác có thể xem rõ cữ thuốc tiếp theo cần uống, liều lượng và cách dùng (uống sau ăn hoặc trước ăn)."}</span>
             </div>
             <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100">
-              <p className="font-bold text-emerald-700 mb-1">2. Xác nhận đã uống:</p>
-              <span>Khi chuông báo reng hoặc khi uống xong, Bác bấm nút màu xanh "Đã uống thuốc" hoặc chọn "Đã uống + Chụp ảnh vỉ thuốc" để con cái an tâm.</span>
+              <p className="font-bold text-emerald-700 mb-1">2. {language === 'en' ? "Confirm Intake & Take Photo:" : "Xác nhận đã uống & Chụp ảnh:"}</p>
+              <span>{language === 'en' ? "When the alarm rings, tap 'Taken + Photo' to take a quick picture of the blister pack. The photo is automatically sent to your family." : "Khi chuông báo reng hoặc khi uống xong, Bác bấm nút 'Đã uống + Chụp ảnh' để máy ảnh bật lên chụp vỉ thuốc gửi ngay cho con cái an tâm."}</span>
             </div>
             <div className="p-3 bg-red-50/60 rounded-xl border border-red-100">
-              <p className="font-bold text-danger mb-1">3. Gọi khẩn cấp (SOS):</p>
-              <span>Nếu cảm thấy mệt hoặc chóng mặt, Bác bấm nút SOS màu đỏ to bản ở Trang chủ hoặc mục Gia đình. Hệ thống sẽ đếm ngược 5 giây rồi tự động lấy vị trí và gọi cấp cứu đến người thân.</span>
-            </div>
-            <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-100">
-              <p className="font-bold text-amber-800 mb-1">4. Quét thuốc ngoài đơn:</p>
-              <span>Nếu Bác muốn uống thêm thuốc ngoài, hãy bấm nút "Quét thuốc ngoài đơn (AI)" và chụp 2-3 ảnh viên thuốc để AI kiểm tra an toàn trước khi dùng.</span>
+              <p className="font-bold text-red-700 mb-1">3. {language === 'en' ? "Emergency SOS Button:" : "Báo động khẩn cấp SOS:"}</p>
+              <span>{language === 'en' ? "In case of dizziness or emergency, tap the big red SOS button to broadcast your GPS location and ring your caregivers." : "Khi thấy mệt mỏi, choáng váng hoặc cần giúp đỡ, Bác bấm giữ nút SOS màu đỏ. Hệ thống sẽ tự động gọi điện và gửi định vị GPS cho người thân ngay."}</span>
             </div>
           </div>
         </ModalWrapper>
@@ -292,20 +485,18 @@ export default function SettingsScreen({ user, onLogout }: Props) {
 
       {/* 6. About Modal */}
       {activeModal === "about" && (
-        <ModalWrapper title="Giới thiệu & Hỗ trợ kỹ thuật" onClose={() => setActiveModal(null)}>
+        <ModalWrapper title={t("settings.about")} onClose={() => setActiveModal(null)}>
           <div className="space-y-3 text-center text-xs text-gray-600">
-            <div className="w-14 h-14 rounded-2xl bg-primary text-white flex items-center justify-center font-black text-xl mx-auto shadow-md shadow-primary/30">
+            <div className="w-16 h-16 rounded-3xl bg-primary/10 text-primary flex items-center justify-center mx-auto text-2xl font-black shadow-inner">
               HM
             </div>
-            <h4 className="font-extrabold text-base text-[#1a2b4b]">Heymedi - Trợ Lý Sức Khỏe Gia Đình</h4>
-            <p className="text-[11px] text-gray-400">Phiên bản 1.0.0 Production (Bản thương mại)</p>
-            
-            <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200 text-left space-y-1.5 mt-2">
-              <p className="font-bold text-[#1a2b4b] flex items-center gap-1.5">
-                <Phone size={14} className="text-primary" /> Tổng đài hỗ trợ 24/7:
+            <h4 className="font-black text-lg text-[#1a2b4b]">Heymedi Healthcare</h4>
+            <p className="text-gray-500 font-medium">Phiên bản 1.0.0 • Giải pháp đồng hành sức khỏe gia đình</p>
+            <div className="bg-gray-50 p-3 rounded-2xl border border-gray-200 text-left space-y-1 mt-2">
+              <p className="font-bold text-[#1a2b4b]">Tổng đài hỗ trợ kỹ thuật 24/7:</p>
+              <p className="text-primary font-bold text-base flex items-center gap-1.5">
+                <Phone size={16} /> 1900 6868
               </p>
-              <p className="text-primary font-black text-sm">1900 1234 (Miễn phí cuộc gọi)</p>
-              <p className="text-gray-500 text-[11px]">Hỗ trợ cài đặt và giải đáp thắc mắc sức khỏe cho người cao tuổi.</p>
             </div>
           </div>
         </ModalWrapper>
@@ -313,23 +504,23 @@ export default function SettingsScreen({ user, onLogout }: Props) {
 
       {/* 7. Logout Confirmation Modal */}
       {activeModal === "logout" && (
-        <ModalWrapper title="Xác nhận đăng xuất" onClose={() => setActiveModal(null)}>
-          <div className="text-center space-y-4">
-            <p className="text-sm font-semibold text-gray-700">
-              Bác có chắc chắn muốn đăng xuất khỏi ứng dụng Heymedi không?
+        <ModalWrapper title={t("logout.confirm_title")} onClose={() => setActiveModal(null)}>
+          <div className="space-y-4 text-center">
+            <p className="text-sm text-gray-600 leading-relaxed">
+              {t("logout.confirm_msg")}
             </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setActiveModal(null)}
-                className="flex-1 py-3 rounded-xl border border-gray-200 font-bold text-sm text-gray-600 hover:bg-gray-50 cursor-pointer"
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button 
+                onClick={() => setActiveModal(null)} 
+                className="py-3.5 rounded-2xl bg-gray-100 text-gray-700 font-bold text-sm hover:bg-gray-200 cursor-pointer"
               >
-                Hủy
+                {t("logout.cancel")}
               </button>
-              <button
-                onClick={onLogout}
-                className="flex-1 py-3 rounded-xl bg-danger text-white font-bold text-sm shadow-md hover:bg-red-700 cursor-pointer"
+              <button 
+                onClick={onLogout} 
+                className="py-3.5 rounded-2xl bg-danger text-white font-bold text-sm shadow-md hover:bg-red-700 cursor-pointer"
               >
-                Đăng xuất
+                {t("logout.confirm")}
               </button>
             </div>
           </div>
@@ -340,23 +531,26 @@ export default function SettingsScreen({ user, onLogout }: Props) {
   );
 }
 
-function SettingItem({ 
-  icon, 
-  label, 
-  value, 
-  hasBorder, 
-  onClick 
-}: { 
-  icon: React.ReactNode; 
-  label: string; 
-  value?: string; 
-  hasBorder?: boolean; 
-  onClick?: () => void;
+function SettingItem({
+  icon,
+  label,
+  value,
+  onClick,
+  hasBorder
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value?: string;
+  onClick: () => void;
+  hasBorder?: boolean;
 }) {
   return (
     <div 
-      onClick={onClick} 
-      className={`flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors ${hasBorder ? 'border-b border-gray-100' : ''}`}
+      onClick={onClick}
+      className={cn(
+        "flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors select-none",
+        hasBorder && "border-b border-gray-100"
+      )}
     >
       <div className="flex items-center gap-3.5">
         <div className="w-6 text-[#1a2b4b]">{icon}</div>
@@ -381,14 +575,14 @@ function ModalWrapper({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-fade-in">
-      <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl animate-slide-up sm:animate-scale-up space-y-4">
+      <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl animate-slide-up sm:animate-scale-up space-y-4 max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between border-b border-gray-100 pb-3">
           <h3 className="font-extrabold text-lg text-[#1a2b4b]">{title}</h3>
           <button onClick={onClose} className="p-1.5 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 cursor-pointer">
             <X size={18} />
           </button>
         </div>
-        <div>{children}</div>
+        <div className="overflow-y-auto">{children}</div>
       </div>
     </div>
   );

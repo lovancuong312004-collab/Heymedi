@@ -25,6 +25,7 @@ import { FamilyProvider, useFamily } from "./contexts/FamilyContext";
 import { recordMissedCall, getUnreadMissedCallCount } from "./services/missedCallService";
 import { savePillProof } from "./services/medicationService";
 import { supabase } from "./lib/supabase";
+import { useSettings } from "./contexts/SettingsContext";
 
 interface Props {
   user: any;
@@ -42,6 +43,7 @@ export default function CaregiverApp({ user, onLogout }: Props) {
 }
 
 function CaregiverAppContent({ user, onLogout }: Props) {
+  const { t } = useSettings();
   const { linkedPatientId, patientInfo } = useFamily();
   const patientName = patientInfo?.name || (patientInfo?.email ? patientInfo.email.split("@")[0] : "Người bệnh");
   const patientPhone = patientInfo?.phone || "0901 234 567";
@@ -332,38 +334,38 @@ function CaregiverAppContent({ user, onLogout }: Props) {
       <div className="absolute bottom-0 w-full bg-white/95 backdrop-blur-sm border-t border-gray-100 px-1 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
         <CaregiverNavItem
           icon={<Home size={22} />}
-          label="Trang chủ"
+          label={t("nav.caregiver_home")}
           isActive={activeTab === "dashboard"}
           onClick={() => setActiveTab("dashboard")}
         />
         <CaregiverNavItem
           icon={<Pill size={22} />}
-          label="Lịch thuốc"
+          label={t("nav.caregiver_meds")}
           isActive={activeTab === "meds"}
           onClick={() => setActiveTab("meds")}
         />
         <CaregiverNavItem
           icon={<Users size={22} />}
-          label="Gia đình"
+          label={t("nav.caregiver_family")}
           isActive={activeTab === "family"}
           onClick={() => setActiveTab("family")}
         />
         <CaregiverNavItem
           icon={<Bell size={22} />}
-          label="Thông báo"
+          label={t("nav.caregiver_notifications")}
           isActive={activeTab === "notifications"}
           onClick={() => setActiveTab("notifications")}
           badgeCount={unreadMissedCount > 0 ? unreadMissedCount : undefined}
         />
         <CaregiverNavItem
           icon={<BarChart3 size={22} />}
-          label="Báo cáo"
+          label={t("nav.caregiver_reports")}
           isActive={activeTab === "reports"}
           onClick={() => setActiveTab("reports")}
         />
         <CaregiverNavItem
           icon={<Settings size={22} />}
-          label="Cài đặt"
+          label={t("nav.caregiver_settings")}
           isActive={activeTab === "settings"}
           onClick={() => setActiveTab("settings")}
         />
