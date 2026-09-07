@@ -317,10 +317,10 @@ export interface PrescriptionAnalysisResult {
 export const CLINICAL_FALLBACK_RESULT: PrescriptionAnalysisResult = {
   isValidPrescription: true,
   isRealAi: false,
-  hospitalName: "BỆNH VIỆN ĐA KHOA AN KHANG",
-  patientName: "NGUYỄN VĂN AN (Bác Ba)",
+  hospitalName: "HỆ THỐNG Y TẾ QUỐC TẾ HEYMEDI",
+  patientName: "NGUYỄN VĂN MINH (Bác Ba)",
   diagnosis: "Tăng huyết áp (nguyên phát) - Đau khớp gối hai bên",
-  doctorName: "BS. Trần Minh Khang",
+  doctorName: "BS. CKII Lê Hoàng Nam - BV HeyMedi",
   revisitDays: 30,
   medications: [
     {
@@ -733,3 +733,170 @@ HÃY PHÂN TÍCH ẢNH VÀ TRẢ VỀ DUY NHẤT CHUỖI JSON:
     };
   }
 }
+
+export interface MedicalDocumentAnalysisResult {
+  isValidDocument: boolean;
+  errorReason?: string;
+  isApiKeyMissing?: boolean;
+  isRealAi?: boolean;
+  docType: "prescription" | "discharge_paper" | "surgery_record" | "lab_test" | "consultation" | "other";
+  title: string;
+  hospitalName: string;
+  doctorName?: string;
+  patientName?: string;
+  date: string;
+  diagnosis?: string;
+  procedureName?: string;
+  summary: string;
+  treatmentPlan?: string;
+  keyMetrics?: string[];
+  cautions?: string[];
+}
+
+/**
+ * Dữ liệu mẫu lâm sàng tài liệu y tế khi chạy thử nghiệm demo
+ */
+export const MEDICAL_DOC_FALLBACK_RESULT: MedicalDocumentAnalysisResult = {
+  isValidDocument: true,
+  isRealAi: false,
+  docType: "surgery_record",
+  title: "Biên bản Phẫu thuật Nội soi Cắt túi mật",
+  hospitalName: "BỆNH VIỆN ĐA KHOA QUỐC TẾ HEYMEDI",
+  doctorName: "TS. BS. Nguyễn Văn Thành (Phẫu thuật viên chính)",
+  patientName: "NGUYỄN VĂN MINH",
+  date: new Date().toLocaleDateString("vi-VN"),
+  diagnosis: "Sỏi túi mật có triệu chứng viêm mạn (ICD: K80.1)",
+  procedureName: "Phẫu thuật nội soi cắt túi mật trọn gói",
+  summary: "Bệnh nhân được phẫu thuật nội soi cắt túi mật thành công, không tai biến chảy máu. Các vị trí trocar khô, dẫn lưu tốt, sinh hiệu ổn định.",
+  treatmentPlan: "Kháng sinh dự phòng 3 ngày. Thay băng vết mổ mỗi ngày một lần. Kiêng đồ ăn nhiều dầu mỡ trong 2 tuần đầu. Cắt chỉ sau 7 ngày.",
+  keyMetrics: [
+    "Thời gian phẫu thuật: 45 phút",
+    "Lượng máu mất: Không đáng kể (< 10ml)",
+    "Giải phẫu bệnh: Túi mật kích thước 3x7cm, 3 viên sỏi sắc tố 8-12mm"
+  ],
+  cautions: [
+    "Sốt cao trên 38.5°C liên tục",
+    "Đau bụng dữ dội tăng dần vùng hạ sườn phải",
+    "Vết mổ rỉ dịch mủ vàng hoặc chảy máu nhiều"
+  ]
+};
+
+/**
+ * Phân tích và bóc tách tài liệu khám chữa bệnh, phẫu thuật, giấy ra viện bằng Gemini AI Vision
+ */
+export async function analyzeMedicalDocument(
+  imageInput: File | Blob
+): Promise<MedicalDocumentAnalysisResult> {
+  const geminiEnv = getGeminiClient();
+
+  if (!geminiEnv) {
+    return {
+      ...MEDICAL_DOC_FALLBACK_RESULT,
+      isApiKeyMissing: true,
+      errorReason: "Chưa cấu hình Google Gemini API Key. Bạn có thể nhấn 'Cài đặt Key' hoặc dùng dữ liệu mẫu HeyMedi."
+    };
+  }
+
+  try {
+    const { client } = geminiEnv;
+    const optimized = await optimizeImageForAI(imageInput, 1536, 0.90);
+
+    const prompt = `
+Bạn là Chuyên gia Y tế & Bác sĩ Lâm sàng hàng đầu của Hệ thống Y tế HeyMedi.
+Nhiệm vụ của bạn là đọc và phân tích ảnh chụp tài liệu khám chữa bệnh, phẫu thuật, giấy ra viện hoặc xét nghiệm của bệnh nhân.
+
+QUY TẮC 1: KIỂM TRA HỢP LỆ VĂN BẢN Y KHOA
+- Nếu ảnh KHÔNG PHẢI là văn bản y tế hợp lệ (ví dụ: ảnh chân dung/selfie, động vật, phong cảnh, thức ăn, xe cộ, ảnh mờ không đọc được chữ):
+  Hãy trả về JSON:
+  {
+    "isValidDocument": false,
+    "errorReason": "Ảnh chụp không phải là văn bản y tế hợp lệ (giấy ra viện, biên bản mổ, phiếu khám, xét nghiệm). Vui lòng chụp rõ ràng giấy tờ y tế!"
+  }
+
+QUY TẮC 2: BÓC TÁCH Y KHOA CHUẨN XÁC
+Nếu là tài liệu y tế hợp lệ:
+1. Phân loại "docType" chính xác vào 1 trong các giá trị:
+   - "surgery_record": Biên bản phẫu thuật / thủ thuật, phiếu mổ, chứng nhận ngoại khoa.
+   - "discharge_paper": Giấy ra viện, tóm tắt hồ sơ bệnh án ra viện.
+   - "consultation": Phiếu khám bệnh, sổ y bạ khám bệnh, phiếu tái khám ngoại trú.
+   - "lab_test": Kết quả xét nghiệm máu/nước tiểu, kết quả X-quang, CT Scanner, MRI, siêu âm, nội soi, điện tim.
+   - "prescription": Đơn thuốc bác sĩ.
+   - "other": Tài liệu y tế khác.
+
+2. Trích xuất thông tin theo cấu trúc JSON sau:
+{
+  "isValidDocument": true,
+  "docType": "surgery_record" | "discharge_paper" | "consultation" | "lab_test" | "prescription" | "other",
+  "title": "Tiêu đề tài liệu ngắn gọn, chuẩn y khoa (VD: Phẫu thuật nội soi cắt túi mật, Giấy ra viện - Viêm phổi cấp, Phiếu kết quả xét nghiệm sinh hóa máu)",
+  "hospitalName": "Tên bệnh viện, phòng khám hoặc cơ sở y tế ghi trên giấy",
+  "doctorName": "Tên bác sĩ khám hoặc phẫu thuật viên chính",
+  "patientName": "Họ và tên bệnh nhân ghi trên giấy",
+  "date": "Ngày khám, ngày mổ hoặc ngày ra viện (định dạng DD/MM/YYYY hoặc YYYY-MM-DD)",
+  "diagnosis": "Chẩn đoán y khoa chính thức (nêu rõ mã ICD nếu có trên giấy)",
+  "procedureName": "Tên phẫu thuật hoặc thủ thuật đã thực hiện (nếu có, nếu không thì để trống chuỗi rỗng)",
+  "summary": "Tóm tắt y khoa súc tích 2-3 câu: Tình trạng nhập viện/thăm khám, can thiệp đã làm, và kết quả chính hiện tại một cách rõ ràng, dễ hiểu cho người nhà và bác sĩ xem lại sau này",
+  "treatmentPlan": "Lời dặn dò của bác sĩ, kế hoạch điều trị tiếp theo, kiêng khem, chăm sóc vết mổ, hoặc lịch hẹn tái khám",
+  "keyMetrics": ["Chỉ số cận lâm sàng 1", "Chỉ số 2 nếu có"],
+  "cautions": ["Cảnh báo nguy hiểm cần tái khám khẩn cấp 1", "Dấu hiệu bất thường 2"]
+}
+
+CHÚ Ý QUAN TRỌNG:
+- Trả về DUY NHẤT một chuỗi JSON hợp lệ. Không chèn bất kỳ văn bản, lời chào hoặc định dạng markdown bên ngoài JSON.
+`.trim();
+
+    const imagePart = {
+      inlineData: {
+        data: optimized.data,
+        mimeType: optimized.mimeType
+      }
+    };
+
+    const { text: rawText, modelName } = await generateContentWithFallback(client, [prompt, imagePart as any]);
+    console.log(`[Medical Doc AI] Đã bóc tách tài liệu y tế bằng model: ${modelName}`);
+
+    const text = rawText
+      .replace(/^```json/gi, '')
+      .replace(/```$/g, '')
+      .trim();
+
+    const parsed = JSON.parse(text);
+
+    if (parsed.isValidDocument === false) {
+      return {
+        isValidDocument: false,
+        errorReason: parsed.errorReason || "Ảnh chụp không phải là tài liệu y tế hợp lệ.",
+        docType: "other",
+        title: "Tài liệu không xác định",
+        hospitalName: "",
+        summary: "",
+        date: new Date().toLocaleDateString("vi-VN"),
+        isRealAi: true
+      };
+    }
+
+    return {
+      isValidDocument: true,
+      docType: parsed.docType || "other",
+      title: parsed.title || "Tài liệu y tế",
+      hospitalName: parsed.hospitalName || "Cơ sở y tế",
+      doctorName: parsed.doctorName || "",
+      patientName: parsed.patientName || "",
+      date: parsed.date || new Date().toLocaleDateString("vi-VN"),
+      diagnosis: parsed.diagnosis || "",
+      procedureName: parsed.procedureName || "",
+      summary: parsed.summary || "Đã lưu trữ tài liệu y tế.",
+      treatmentPlan: parsed.treatmentPlan || "",
+      keyMetrics: Array.isArray(parsed.keyMetrics) ? parsed.keyMetrics : [],
+      cautions: Array.isArray(parsed.cautions) ? parsed.cautions : [],
+      isRealAi: true
+    };
+  } catch (err: any) {
+    console.warn("Analyze medical document error:", err);
+    return {
+      ...MEDICAL_DOC_FALLBACK_RESULT,
+      isRealAi: false,
+      errorReason: err?.message || "Không thể phân tích tài liệu bằng AI. Đã chuyển sang bản ghi mẫu."
+    };
+  }
+}
+

@@ -29,6 +29,13 @@ import {
   type ParsedMedication
 } from "../utils/geminiVision";
 import { addMedicationWithCourse, saveDiagnosisRecord } from "../services/medicationService";
+import { saveMedicalDocument } from "../services/medicalDocumentService";
+import { 
+  playScannerStartSound, 
+  playScannerPulseSound, 
+  playScannerSuccessSound, 
+  playScannerErrorSound 
+} from "../utils/scannerSoundEffects";
 import { useFamily } from "../contexts/FamilyContext";
 import { supabase } from "../lib/supabase";
 import { cn } from "../lib/utils";
@@ -138,11 +145,19 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
     setScanProgress(25);
     setScanStageText("🔍 AI Gemini Vision đang đọc đơn thuốc...");
 
+    // Phát âm thanh laser radar sweep công nghệ cao
+    playScannerStartSound();
+    const pulseTimer = setInterval(() => {
+      playScannerPulseSound();
+    }, 450);
+
     try {
       const result = await analyzePrescription(file);
 
       // Nếu chưa có API Key
       if (result.isApiKeyMissing) {
+        clearInterval(pulseTimer);
+        playScannerErrorSound();
         setStep("capture");
         setScanError(result.errorReason || "Chưa cấu hình Google Gemini API Key.");
         setShowApiKeyModal(true);
@@ -151,11 +166,15 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
 
       // Nếu ảnh chụp không phải là đơn thuốc y tế (ví dụ: selfie/khuôn mặt/đồ vật)
       if (result.isValidPrescription === false) {
+        clearInterval(pulseTimer);
+        playScannerErrorSound();
         setStep("capture");
         setScanError(result.errorReason || "Ảnh chụp không phải là đơn thuốc y tế hợp lệ. Vui lòng chụp rõ văn bản đơn thuốc có chữ ký hoặc mộc của Bác sĩ.");
         return;
       }
 
+      clearInterval(pulseTimer);
+      playScannerSuccessSound();
       setScanProgress(100);
       setScanStageText("✅ Hoàn tất trích xuất dữ liệu lâm sàng!");
 
@@ -172,6 +191,8 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
       }, 300);
 
     } catch (err: any) {
+      clearInterval(pulseTimer);
+      playScannerErrorSound();
       setStep("capture");
       setScanError(err?.message || "Có lỗi xảy ra khi quét đơn thuốc. Vui lòng thử lại!");
     }
@@ -358,11 +379,29 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
         });
       }
 
+      // TỰ ĐỘNG LƯU TRỮ TOÀN BỘ ĐƠN THUỐC VÀO HỒ SƠ SỨC KHỎE (ẢNH GỐC + DỮ LIỆU BÓC TÁCH)
+      await saveMedicalDocument(linkedPatientId, {
+        type: "prescription",
+        title: `Đơn thuốc: ${prescriptionMeta.diagnosis || "Điều trị ngoại trú"}`,
+        imageUrl: imageUrl || imagePreview || undefined,
+        date: new Date().toLocaleDateString("vi-VN"),
+        hospitalName: prescriptionMeta.hospitalName || "Hệ thống Y tế Quốc tế HeyMedi",
+        doctorName: prescriptionMeta.doctorName || "Bác sĩ kê đơn",
+        diagnosis: prescriptionMeta.diagnosis || "Điều trị theo đơn",
+        summary: `Đơn thuốc gồm ${medsList.length} loại: ${medsList.map(m => m.name).join(", ")}. Tổng liều trình theo dõi ${medsList[0]?.duration_days || 30} ngày.`,
+        treatmentPlan: `Tuân thủ lịch nhắc chuông tự động HeyMedi. Uống đúng cữ trước/sau ăn theo chỉ định. Tái khám sau ${prescriptionMeta.revisitDays || 30} ngày.`,
+        cautions: [
+          "Không tự ý ngừng thuốc huyết áp/tim mạch đột ngột",
+          "Thuốc dùng khi đau chỉ uống khi đau nhiều, cách tối thiểu 4-6 tiếng"
+        ]
+      });
+
       alert(
-        `🎉 ĐÃ LÊN LỊCH THÀNH CÔNG THEO ĐƠN BÁC SĨ!\n` +
+        `🎉 ĐÃ LÊN LỊCH & LƯU VÀO HỒ SƠ SỨC KHỎE!\n` +
+        `• Đã lưu trữ ảnh gốc và chi tiết đơn thuốc vào Hồ Sơ Sức Khỏe.\n` +
         `• ${scheduledCount} thuốc điều trị định kỳ: Kích hoạt ${totalRemindersCreated} lần nhắc chuông.\n` +
-        `• ${asNeededCount} thuốc dùng khi đau (Paracetamol): Đã lưu vào Tủ thuốc mục 'Dùng khi cần' (Tránh lạm dụng).\n` +
-        `• ĐÃ TỰ ĐỘNG CẬP NHẬT CHẨN ĐOÁN vào Tiền sử bệnh: "${prescriptionMeta.diagnosis}".`
+        `• ${asNeededCount} thuốc dùng khi đau (SOS): Đã lưu vào Tủ thuốc mục 'Dùng khi cần'.\n` +
+        `• ĐÃ TỰ ĐỘNG CẬP NHẬT CHẨN ĐOÁN vào Tiền sử bệnh: "${prescriptionMeta.diagnosis || 'Đã ghi nhận'}".`
       );
 
       handleClose();
@@ -453,7 +492,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                       onClick={handleUseDemoSample}
                       className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer ml-auto"
                     >
-                      🧪 Thử nghiệm đơn mẫu An Khang
+                      🧪 Thử nghiệm đơn mẫu HeyMedi
                     </button>
                   </div>
                 </div>
@@ -607,7 +646,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                 {/* Các Tag OCR Nhận diện động xuất hiện trên ảnh */}
                 <div className="absolute top-6 left-6 bg-black/70 backdrop-blur-sm text-cyan-300 border border-cyan-400/60 px-2.5 py-1 rounded-full text-[10px] font-mono tracking-wide flex items-center gap-1.5 shadow-md animate-pulse">
                   <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                  <span>OCR SCANNING: PRESCRIPTION_AN_KHANG</span>
+                  <span>OCR SCANNING: HEYMEDI_AI_VISION_SYSTEM</span>
                 </div>
 
                 <div className="absolute bottom-6 right-6 bg-black/70 backdrop-blur-sm text-emerald-300 border border-emerald-400/60 px-2.5 py-1 rounded-full text-[10px] font-mono tracking-wide shadow-md">
@@ -680,7 +719,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                   <div className="space-y-1">
                     <div className="flex items-center gap-1.5 text-primary font-black text-sm sm:text-base">
                       <Building2 size={16} />
-                      <span>{prescriptionMeta.hospitalName || "BỆNH VIỆN ĐA KHOA AN KHANG"}</span>
+                      <span>{prescriptionMeta.hospitalName || "HỆ THỐNG Y TẾ QUỐC TẾ HEYMEDI"}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600 font-medium">
                       <span className="flex items-center gap-1">
@@ -689,7 +728,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                       </span>
                       <span className="flex items-center gap-1">
                         <Stethoscope size={13} className="text-gray-400" />
-                        <b>Bác sĩ:</b> {prescriptionMeta.doctorName || "BS. Trần Minh Khang"}
+                        <b>Bác sĩ:</b> {prescriptionMeta.doctorName || "BS. CKII Lê Hoàng Nam - HeyMedi"}
                       </span>
                     </div>
                   </div>
@@ -1001,7 +1040,7 @@ export default function ScanPrescriptionModal({ isOpen, onClose, onSuccess }: Pr
                   onClick={handleUseDemoSample}
                   className="py-2.5 text-xs text-gray-500 hover:text-primary font-semibold transition-colors text-center"
                 >
-                  Hoặc bấm vào đây để dùng thử đơn thuốc mẫu An Khang
+                  Hoặc bấm vào đây để dùng thử đơn thuốc mẫu HeyMedi
                 </button>
               </div>
             </div>

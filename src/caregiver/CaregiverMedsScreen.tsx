@@ -1187,7 +1187,7 @@ export default function CaregiverMedsScreen({
                   value={newDiagHospital}
                   onChange={(e) => setNewDiagHospital(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs text-[#1a2b4b] focus:border-primary outline-hidden"
-                  placeholder="Bệnh viện Bạch Mai, Đa khoa An Khang..."
+                  placeholder="Bệnh viện Bạch Mai, BV Chợ Rẫy, BV HeyMedi..."
                 />
               </div>
 
