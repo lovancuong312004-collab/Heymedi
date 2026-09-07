@@ -83,7 +83,7 @@ export default function CallModal({
   // Real Hardware Media Controls
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(true);
-  const [isVideo, setIsVideo] = useState(initialVideo);
+  const [isVideo, setIsVideo] = useState(isSOS ? true : initialVideo);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   
   // Remote Peer States
@@ -681,7 +681,7 @@ export default function CallModal({
     <div 
       onClick={handleModalInteraction}
       onTouchStart={handleModalInteraction}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in select-none"
+      className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in select-none"
     >
       <div className="w-full max-w-sm bg-gradient-to-b from-slate-900 via-slate-800 to-slate-950 text-white rounded-[36px] p-5 flex flex-col items-center justify-between min-h-[580px] shadow-2xl border border-white/10 relative overflow-hidden">
         

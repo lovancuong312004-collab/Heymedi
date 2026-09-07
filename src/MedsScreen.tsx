@@ -11,7 +11,8 @@ import {
   Check, 
   CalendarCheck,
   Camera,
-  Volume2
+  Volume2,
+  X
 } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import { cn } from "./lib/utils";
@@ -49,6 +50,7 @@ export default function MedsScreen({ user }: Props) {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [photoCaptureSession, setPhotoCaptureSession] = useState<DoseSessionGroup | null>(null);
+  const [viewingMedPhoto, setViewingMedPhoto] = useState<{ name: string; imageUrl?: string | null; dosage?: string; instruction?: string } | null>(null);
   
   const [schedule, setSchedule] = useState<Reminder[]>([]);
   const [daysSummary, setDaysSummary] = useState<Record<string, { count: number; allTaken: boolean; hasPending: boolean }>>({});
@@ -468,6 +470,7 @@ export default function MedsScreen({ user }: Props) {
                     onConfirmSessionTaken={() => handleConfirmSessionTaken(session)}
                     onTakeSessionPhoto={() => setPhotoCaptureSession(session)}
                     onConfirmSingleMed={(medId) => handleConfirmTaken(medId)}
+                    onViewMedPhoto={(med) => setViewingMedPhoto(med)}
                     isMarkingId={markingId}
                   />
                 ))}
@@ -506,6 +509,74 @@ export default function MedsScreen({ user }: Props) {
         </div>
 
       </div>
+
+      {/* POPUP PHÓNG TO XEM RÕ ẢNH VỈ THUỐC CHO NGƯỜI GIÀ */}
+      {viewingMedPhoto && (
+        <div 
+          onClick={() => setViewingMedPhoto(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-gray-100 flex flex-col max-h-[85vh] animate-slide-up cursor-default"
+          >
+            <div className="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase text-primary tracking-wider">
+                  Mặt vỉ thuốc thực tế
+                </span>
+                <h3 className="text-lg font-black text-[#1a2b4b]">
+                  {viewingMedPhoto.name}
+                </h3>
+              </div>
+              <button
+                onClick={() => setViewingMedPhoto(null)}
+                className="w-9 h-9 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 bg-gray-900 flex items-center justify-center min-h-[250px] max-h-[500px] overflow-hidden">
+              {viewingMedPhoto.imageUrl ? (
+                <img 
+                  src={viewingMedPhoto.imageUrl} 
+                  alt={viewingMedPhoto.name} 
+                  className="w-full h-full object-contain rounded-xl max-h-[480px]"
+                />
+              ) : (
+                <div className="text-center text-white/70 py-10 space-y-2">
+                  <span className="text-6xl block">💊</span>
+                  <p className="text-xs">Chưa có ảnh vỉ thuốc thực tế trong hệ thống.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-white border-t border-gray-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500">Liều lượng:</span>
+                <span className="text-xs font-black text-primary bg-blue-50 px-2.5 py-1 rounded-lg">
+                  {viewingMedPhoto.dosage || "1 viên"}
+                </span>
+              </div>
+              {viewingMedPhoto.instruction && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-500">Cách dùng:</span>
+                  <span className="text-xs font-bold text-gray-800">
+                    {viewingMedPhoto.instruction.split('|')[0]}
+                  </span>
+                </div>
+              )}
+              <button
+                onClick={() => setViewingMedPhoto(null)}
+                className="w-full mt-2 py-3 rounded-2xl bg-primary text-white font-bold text-sm shadow-md shadow-primary/25 cursor-pointer"
+              >
+                Đóng lại
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -516,6 +587,7 @@ function DoseSessionCard({
   onConfirmSessionTaken,
   onTakeSessionPhoto,
   onConfirmSingleMed,
+  onViewMedPhoto,
   isMarkingId
 }: {
   session: DoseSessionGroup;
@@ -523,6 +595,7 @@ function DoseSessionCard({
   onConfirmSessionTaken: () => void;
   onTakeSessionPhoto: () => void;
   onConfirmSingleMed: (medId: string) => void;
+  onViewMedPhoto?: (med: { name: string; imageUrl?: string | null; dosage?: string; instruction?: string }) => void;
   isMarkingId: string | null;
 }) {
   const [isExpanded, setIsExpanded] = useState(!session.isAllTaken);
@@ -634,9 +707,23 @@ function DoseSessionCard({
                   )}
                 >
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <div className="w-11 h-11 rounded-xl bg-white border border-gray-200 overflow-hidden shrink-0 flex items-center justify-center shadow-2xs">
+                    <div 
+                      onClick={() => onViewMedPhoto?.({ 
+                        name: cleanName, 
+                        imageUrl: med.medication?.image_url, 
+                        dosage: med.medication?.dosage, 
+                        instruction: med.medication?.instructions 
+                      })}
+                      className="w-12 h-12 rounded-xl bg-white border border-gray-200 overflow-hidden shrink-0 flex items-center justify-center shadow-2xs cursor-pointer hover:border-primary active:scale-95 transition-all group relative"
+                      title="Chạm để phóng to xem rõ ảnh vỉ thuốc"
+                    >
                       {med.medication?.image_url ? (
-                        <img src={med.medication.image_url} alt={cleanName} className="w-full h-full object-cover" />
+                        <>
+                          <img src={med.medication.image_url} alt={cleanName} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[9px] transition-opacity font-bold">
+                            🔍
+                          </div>
+                        </>
                       ) : (
                         <span className="text-xl">💊</span>
                       )}
@@ -644,7 +731,18 @@ function DoseSessionCard({
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <h4 className="font-black text-sm truncate">{cleanName}</h4>
+                        <h4 
+                          onClick={() => onViewMedPhoto?.({ 
+                            name: cleanName, 
+                            imageUrl: med.medication?.image_url, 
+                            dosage: med.medication?.dosage, 
+                            instruction: med.medication?.instructions 
+                          })}
+                          className="font-black text-sm truncate cursor-pointer hover:text-primary transition-colors"
+                          title="Bấm để xem rõ thuốc"
+                        >
+                          {cleanName}
+                        </h4>
                         <button
                           type="button"
                           onClick={() => handleSpeakPill(med)}

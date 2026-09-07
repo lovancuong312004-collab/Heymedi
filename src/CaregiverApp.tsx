@@ -158,6 +158,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         if (payload) {
           // Khớp đúng người bệnh hoặc chưa liên kết hoặc payload chưa có ID
           if (!linkedPatientId || payload.patient_id === linkedPatientId || !payload.patient_id || payload.patient_id === "patient_unknown") {
+            setPillProofAlert(null); // Tránh chồng đè modal minh chứng thuốc phía dưới
             setSosAlert(payload);
           }
         }
@@ -240,7 +241,8 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         onDismiss={() => setSosAlert(null)}
         onOpenCall={() => {
           setSosAlert(null);
-          handleStartCall({ isSOS: true });
+          setPillProofAlert(null);
+          handleStartCall({ isSOS: true, video: true });
         }}
       />
 

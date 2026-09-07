@@ -63,11 +63,11 @@ export default function CaregiverSOSAlertModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-red-600 text-white flex flex-col items-center justify-between p-6 sm:p-10 select-none animate-pulse overflow-y-auto">
+    <div className="fixed inset-0 z-[99999] bg-gradient-to-b from-[#dc2626] via-[#b91c1c] to-[#991b1b] text-white flex flex-col items-center justify-between p-6 sm:p-10 select-none overflow-y-auto">
       
       {/* Top Banner */}
       <div className="w-full flex items-center justify-center pt-2">
-        <div className="bg-black/30 backdrop-blur-md px-6 py-2 rounded-full border border-white/40 flex items-center gap-2">
+        <div className="bg-black/40 backdrop-blur-md px-6 py-2 rounded-full border border-white/40 flex items-center gap-2">
           <ShieldAlert size={20} className="text-amber-300 animate-bounce" />
           <span className="text-xs sm:text-sm font-black tracking-widest uppercase text-white">
             BÁO ĐỘNG ĐỎ KHẨN CẤP TỪ HỆ THỐNG
@@ -129,7 +129,11 @@ export default function CaregiverSOSAlertModal({
         {onOpenCall && (
           <button
             onClick={() => {
-              if (stopSirenRef.current) stopSirenRef.current();
+              if (stopSirenRef.current) {
+                stopSirenRef.current();
+                stopSirenRef.current = null;
+              }
+              onDismiss();
               onOpenCall();
             }}
             className="w-full bg-white hover:bg-white/95 text-red-600 font-black text-xl py-5 rounded-2xl shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all cursor-pointer uppercase"

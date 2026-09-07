@@ -44,6 +44,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
     contactPhone?: string;
     avatarUrl?: string;
     isSOS?: boolean;
+    initialVideo?: boolean;
     isInitiator?: boolean;
   } | null>(null);
 
@@ -97,6 +98,34 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         const p = event.payload;
         if (!p || p.caller_id === user?.id) return;
         if (p.target_id && p.target_id !== user?.id) return;
+
+        // NẾU LÀ CUỘC GỌI KHẨN CẤP SOS (p.is_sos === true) -> TỰ ĐỘNG BẮT MÁY VÀ BẬT CAMERA NGAY LẬP TỨC!
+        if (p.is_sos) {
+          console.log("🚨 CUỘC GỌI KHẨN CẤP SOS -> TỰ ĐỘNG BẮT MÁY & BẬT CAMERA!");
+          setIncomingCall(null);
+
+          const ch = globalChannelRef.current || supabase.channel('sos-emergency-alerts');
+          ch.send({
+            type: 'broadcast',
+            event: 'CALL_ACCEPTED',
+            payload: {
+              call_id: p.call_id,
+              accepted_by_id: user?.id,
+              accepted_by_name: user?.user_metadata?.full_name || "Bác",
+            }
+          }).catch(() => {});
+
+          setActiveCall({
+            callId: p.call_id,
+            contactName: p.caller_name || "Người thân khẩn cấp",
+            contactRole: "Cuộc gọi SOS Khẩn cấp",
+            avatarUrl: p.caller_avatar,
+            isSOS: true,
+            initialVideo: true,
+            isInitiator: false,
+          });
+          return;
+        }
 
         setIncomingCall({
           callId: p.call_id,
@@ -213,6 +242,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
           contactPhone={activeCall.contactPhone}
           avatarUrl={activeCall.avatarUrl}
           isSOS={activeCall.isSOS}
+          initialVideo={activeCall.initialVideo}
           isInitiator={activeCall.isInitiator}
         />
       )}

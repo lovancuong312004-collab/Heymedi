@@ -60,6 +60,7 @@ export default function MedicationAlertScreen({
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [zoomedMed, setZoomedMed] = useState<AlertMedicineItem | null>(null);
 
   // Hàm làm sạch hướng dẫn uống thuốc: bỏ các đoạn lặp lại liều, lộ trình dài dòng
   const getConciseInstruction = (instr?: string): string => {
@@ -237,8 +238,15 @@ export default function MedicationAlertScreen({
             
             {/* Ảnh vỉ thuốc thực tế hoặc ảnh chụp xác minh */}
             {photoPreview ? (
-              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shadow-md border-2 border-emerald-500 relative mb-2">
-                <img src={photoPreview} alt="Ảnh thuốc" className="w-full h-full object-cover" />
+              <div 
+                onClick={() => setZoomedMed({ ...activeMed, imageUrl: photoPreview })}
+                className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shadow-md border-2 border-emerald-500 relative mb-2 cursor-pointer group active:scale-95 transition-transform"
+                title="Bấm để phóng to xem rõ ảnh"
+              >
+                <img src={photoPreview} alt="Ảnh thuốc" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] text-center py-0.5 font-bold">
+                  🔍 Chạm xem to
+                </div>
                 {isVerifying && (
                   <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white p-1">
                     <Loader2 size={20} className="animate-spin text-emerald-400 mb-1" />
@@ -253,9 +261,18 @@ export default function MedicationAlertScreen({
                 )}
               </div>
             ) : (
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center shadow-inner relative mb-2 overflow-hidden">
+              <div 
+                onClick={() => setZoomedMed(activeMed)}
+                className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center shadow-inner relative mb-2 overflow-hidden cursor-pointer hover:border-primary active:scale-95 transition-all group"
+                title="Bấm để xem rõ ảnh vỉ thuốc"
+              >
                 {activeMed.imageUrl ? (
-                  <img src={activeMed.imageUrl} alt={activeMed.name} className="w-full h-full object-cover" />
+                  <>
+                    <img src={activeMed.imageUrl} alt={activeMed.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                    <div className="absolute bottom-0 inset-x-0 bg-black/65 text-white text-[8px] text-center py-0.5 font-bold">
+                      🔍 Xem to
+                    </div>
+                  </>
                 ) : (
                   <div className="w-14 h-14 rounded-full bg-white shadow-xs flex items-center justify-center">
                     <span className="text-3xl">💊</span>
@@ -269,7 +286,7 @@ export default function MedicationAlertScreen({
               {cleanMedicineTitle(activeMed.name)}
             </h2>
 
-            <div className="flex items-center gap-1.5 flex-wrap justify-center">
+            <div className="flex items-center gap-1.5 flex-wrap justify-center mb-1">
               <span className="text-primary text-xs font-black bg-[#EBF1FF] px-3 py-1 rounded-xl">
                 {activeMed.dosage}
               </span>
@@ -277,6 +294,16 @@ export default function MedicationAlertScreen({
                 {getConciseInstruction(activeMed.instruction)}
               </span>
             </div>
+
+            {activeMed.imageUrl && (
+              <button
+                type="button"
+                onClick={() => setZoomedMed(activeMed)}
+                className="text-[11px] font-bold text-primary hover:text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200 flex items-center gap-1 mt-0.5 cursor-pointer active:scale-95 transition-transform"
+              >
+                <span>🔍 Phóng to xem rõ vỉ thuốc</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -329,6 +356,72 @@ export default function MedicationAlertScreen({
           <span>Bấm để AI đọc lại toàn bộ thuốc cữ này</span>
         </button>
       </div>
+
+      {/* MODAL PHÓNG TO XEM RÕ ẢNH VỈ/HỘP THUỐC CHO NGƯỜI GIÀ */}
+      {zoomedMed && (
+        <div 
+          onClick={() => setZoomedMed(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-gray-100 flex flex-col max-h-[85vh] animate-slide-up cursor-default"
+          >
+            <div className="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase text-primary tracking-wider">
+                  Mặt vỉ thuốc thực tế
+                </span>
+                <h3 className="text-lg font-black text-[#1a2b4b]">
+                  {cleanMedicineTitle(zoomedMed.name)}
+                </h3>
+              </div>
+              <button
+                onClick={() => setZoomedMed(null)}
+                className="w-9 h-9 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 bg-gray-900 flex items-center justify-center min-h-[250px] max-h-[500px] overflow-hidden">
+              {zoomedMed.imageUrl ? (
+                <img 
+                  src={zoomedMed.imageUrl} 
+                  alt={zoomedMed.name} 
+                  className="w-full h-full object-contain rounded-xl max-h-[480px]"
+                />
+              ) : (
+                <div className="text-center text-white/70 py-10 space-y-2">
+                  <span className="text-6xl block">💊</span>
+                  <p className="text-xs">Chưa có ảnh vỉ thuốc thực tế trong hệ thống.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-white border-t border-gray-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500">Liều lượng:</span>
+                <span className="text-xs font-black text-primary bg-blue-50 px-2.5 py-1 rounded-lg">
+                  {zoomedMed.dosage}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500">Cách dùng:</span>
+                <span className="text-xs font-bold text-gray-800">
+                  {getConciseInstruction(zoomedMed.instruction)}
+                </span>
+              </div>
+              <button
+                onClick={() => setZoomedMed(null)}
+                className="w-full mt-2 py-3 rounded-2xl bg-primary text-white font-bold text-sm shadow-md shadow-primary/25 cursor-pointer"
+              >
+                Đóng lại
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`@keyframes ring { 0%,100% { transform: rotate(-15deg); } 50% { transform: rotate(15deg); } }`}</style>
     </div>
