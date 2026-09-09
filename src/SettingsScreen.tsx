@@ -19,7 +19,7 @@ import {
   Sun,
   ToggleLeft,
   ToggleRight,
-  AlertCircle
+  Mic
 } from "lucide-react";
 import HealthProfileModal from "./screens/HealthProfileModal";
 import { useSettings, type VoiceId, type FontSize } from "./contexts/SettingsContext";
@@ -57,7 +57,7 @@ export default function SettingsScreen({ user, onLogout }: Props) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState("Vừa xong");
   const [isTestingVoice, setIsTestingVoice] = useState(false);
-  const [floatingSos, setFloatingSos] = useState(() => localStorage.getItem('heymedi_floating_sos') !== 'false');
+  const [heyMediEnabled, setHeyMediEnabled] = useState(() => localStorage.getItem('heymedi_wakeword_enabled') === 'true');
 
   const handleTestVoiceClick = () => {
     setIsTestingVoice(true);
@@ -171,32 +171,32 @@ export default function SettingsScreen({ user, onLogout }: Props) {
           </button>
         </div>
 
-        {/* Nút SOS Cứu Hộ Khẩn Cấp Nổi */}
+        {/* Hey HeyMedi – Trợ lý giọng nói (Wake Word) */}
         <div className="flex items-center justify-between p-4 border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
           <div className="flex items-center gap-3.5">
-            <div className="w-6 flex justify-center items-center text-danger">
-              <AlertCircle size={22} className="text-danger" />
+            <div className="w-6 flex justify-center items-center text-primary">
+              <Mic size={22} className="text-primary" />
             </div>
             <div>
               <span className="text-[#1a2b4b] font-bold text-base block leading-tight">
-                Nút SOS khẩn cấp nổi
+                Hey HeyMedi
               </span>
-              <span className="text-xs text-gray-400 font-medium">Bấm nhanh cấp cứu từ bất kỳ trang nào</span>
+              <span className="text-xs text-gray-400 font-medium">Nói "heymedi" để kích hoạt trợ lý</span>
             </div>
           </div>
           <button 
             type="button"
             onClick={() => {
-              const nextVal = !floatingSos;
-              setFloatingSos(nextVal);
-              localStorage.setItem('heymedi_floating_sos', nextVal ? 'true' : 'false');
-              window.dispatchEvent(new Event('heymedi_floating_sos_changed'));
+              const nextVal = !heyMediEnabled;
+              setHeyMediEnabled(nextVal);
+              localStorage.setItem('heymedi_wakeword_enabled', nextVal ? 'true' : 'false');
+              window.dispatchEvent(new Event('heymedi_wakeword_changed'));
             }} 
             className="cursor-pointer" 
-            title="Bật/tắt nút SOS nổi trên màn hình"
+            title="Bật/tắt trợ lý giọng nói Hey HeyMedi"
           >
-            {floatingSos ? (
-              <ToggleRight size={36} className="text-danger fill-danger" />
+            {heyMediEnabled ? (
+              <ToggleRight size={36} className="text-primary fill-primary" />
             ) : (
               <ToggleLeft size={36} className="text-gray-300" />
             )}

@@ -490,10 +490,27 @@ export default function HomeScreen({
                   </div>
                 )}
 
-                {/* Nút Uống tất cả / Đã uống */}
+                {/* Nút Uống sớm → Mở giao diện xác nhận thuốc đầy đủ (MedicationAlertScreen) */}
                 <div className="mt-4 pt-2 border-t border-gray-100">
                   <button 
-                    onClick={() => handleTakeDoseSession(undefined, nextSessionReminders.map(r => r.id))}
+                    onClick={() => {
+                      const hourVal = parseInt((nextSessionTimeStr || "0").split(':')[0], 10);
+                      const meal = hourVal < 11 ? "Cữ Sáng (Sau ăn)" : hourVal < 15 ? "Cữ Trưa (Sau ăn)" : hourVal < 20 ? "Cữ Tối (Sau ăn)" : "Cữ Trước Ngủ";
+                      setAlertSession({
+                        time: nextSessionTimeStr || "",
+                        mealLabel: meal,
+                        scheduled_time: nextReminder!.scheduled_time,
+                        medicines: nextSessionReminders.map(r => ({
+                          id: r.id,
+                          name: cleanMedicineTitle(r.medication?.name || "Thuốc"),
+                          dosage: r.medication?.dosage || "1 viên",
+                          instruction: r.medication?.instructions || "Uống theo đơn",
+                          imageUrl: r.medication?.image_url,
+                          scheduled_time: r.scheduled_time,
+                          time: nextSessionTimeStr || ""
+                        }))
+                      });
+                    }}
                     disabled={takingId !== null}
                     className="w-full bg-primary hover:bg-blue-700 text-white py-3.5 rounded-2xl font-black text-base shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all tracking-wide disabled:opacity-70 flex items-center justify-center gap-2 cursor-pointer"
                   >

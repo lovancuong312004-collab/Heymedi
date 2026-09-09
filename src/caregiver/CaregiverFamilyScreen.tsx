@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Scan, CheckCircle2, Users, Phone, ShieldCheck, UserPlus, HeartHandshake, Loader2, X, Trash2, Check, Heart, ChevronRight } from "lucide-react";
+import { Plus, Scan, CheckCircle2, Users, Phone, ShieldCheck, UserPlus, HeartHandshake, Loader2, X, Trash2, Check, Heart, ChevronRight, Sparkles, BarChart3 } from "lucide-react";
 import ScanLinkModal from "../screens/ScanLinkModal";
 import HealthProfileModal from "../screens/HealthProfileModal";
 import CallModal from "./CallModal";
@@ -8,7 +8,7 @@ import { supabase } from "../lib/supabase";
 import { getCustomCaregivers, addCustomCaregiver, deleteCustomCaregiver } from "../services/familyCaregivers";
 import { cn } from "../lib/utils";
 
-export default function CaregiverFamilyScreen({ user }: { user: any }) {
+export default function CaregiverFamilyScreen({ user, onNavigateTab }: { user: any; onNavigateTab?: (tab: string) => void }) {
   const { linkedPatientId, patientInfo, isLoading, refreshLink } = useFamily();
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isHealthProfileOpen, setIsHealthProfileOpen] = useState(false);
@@ -322,6 +322,35 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
             </div>
             <div className="w-8 h-8 rounded-full bg-gray-50 group-hover:bg-red-50 flex items-center justify-center shrink-0 transition-colors">
               <ChevronRight size={18} className="text-gray-400 group-hover:text-red-500 transition-colors" />
+            </div>
+          </div>
+
+          {/* Card: Báo cáo & Phân tích AI (chuyển từ tab nav vào đây) */}
+          <div 
+            onClick={() => onNavigateTab?.("reports")}
+            className="bg-white rounded-3xl p-5 flex items-center justify-between border border-blue-100 shadow-sm cursor-pointer hover:bg-blue-50/30 active:scale-[0.98] transition-all group"
+          >
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-13 h-13 rounded-2xl bg-[#EBF1FF] text-primary flex items-center justify-center shrink-0 border border-blue-100 shadow-sm group-hover:scale-105 transition-transform">
+                <BarChart3 size={26} className="text-primary" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-blue-100 text-primary px-2 py-0.5 rounded-full">
+                    AI Analytics
+                  </span>
+                  <Sparkles size={14} className="text-amber-400" />
+                </div>
+                <h3 className="text-[#1A2B4B] font-bold text-base leading-tight truncate">
+                  Báo cáo & Phân tích AI
+                </h3>
+                <p className="text-gray-500 text-xs font-medium leading-relaxed truncate mt-0.5">
+                  Tỷ lệ tuân thủ, xu hướng sức khỏe, gợi ý tối ưu
+                </p>
+              </div>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-gray-50 group-hover:bg-blue-50 flex items-center justify-center shrink-0 transition-colors">
+              <ChevronRight size={18} className="text-gray-400 group-hover:text-primary transition-colors" />
             </div>
           </div>
 

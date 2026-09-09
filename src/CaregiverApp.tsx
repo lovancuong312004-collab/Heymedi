@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { 
   Home, 
   Pill, 
-  BarChart3, 
+  Scan,
   Settings,
   Users
 } from "lucide-react";
@@ -349,7 +349,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
             onOpenAddMed={() => setIsAddMedOpen(true)}
           />
         )}
-        {activeTab === "family" && <CaregiverFamilyScreen user={user} />}
+        {activeTab === "family" && <CaregiverFamilyScreen user={user} onNavigateTab={(tab) => setActiveTab(tab as any)} />}
         {activeTab === "notifications" && (
           <div className="flex flex-col h-full">
             {/* Header with back button */}
@@ -374,8 +374,8 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         {activeTab === "settings" && <CaregiverSettings user={user} onLogout={onLogout} />}
       </div>
 
-      {/* Bottom Navigation: 5 TAB CHUẨN KHÔNG BAO GIỜ BỊ ĐẨY MẤT CÀI ĐẶT */}
-      <div className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-100 px-1 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
+      {/* Bottom Navigation: 4 TAB + NÚT QR TO Ở GIỮA (giống người bệnh) */}
+      <div className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-100 px-1 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40 relative">
         <CaregiverNavItem
           icon={<Home size={22} />}
           label={t("nav.caregiver_home")}
@@ -388,17 +388,26 @@ function CaregiverAppContent({ user, onLogout }: Props) {
           isActive={activeTab === "meds"}
           onClick={() => setActiveTab("meds")}
         />
+
+        {/* Nút Quét QR To Nổi Bật Ở Chính Giữa */}
+        <button
+          onClick={() => setIsScanOpen(true)}
+          className="flex flex-col items-center justify-center -mt-6 cursor-pointer group active:scale-95 transition-transform"
+          title="Quét đơn thuốc & mã QR"
+        >
+          <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-primary to-blue-500 text-white flex items-center justify-center shadow-lg shadow-blue-500/35 border-4 border-white group-hover:scale-105 transition-transform">
+            <Scan size={26} strokeWidth={2.5} />
+          </div>
+          <span className="text-[11px] font-extrabold text-primary mt-1">
+            Quét QR
+          </span>
+        </button>
+
         <CaregiverNavItem
           icon={<Users size={22} />}
           label={t("nav.caregiver_family")}
           isActive={activeTab === "family"}
           onClick={() => setActiveTab("family")}
-        />
-        <CaregiverNavItem
-          icon={<BarChart3 size={22} />}
-          label={t("nav.caregiver_reports")}
-          isActive={activeTab === "reports"}
-          onClick={() => setActiveTab("reports")}
         />
         <CaregiverNavItem
           icon={<Settings size={22} />}

@@ -22,7 +22,7 @@ export default function CaregiverDashboard({
   onOpenCall,
   onNavigateTab,
   onOpenAddMed: _onOpenAddMed,
-  onOpenScan
+  onOpenScan: _onOpenScan
 }: Props) {
   const caregiverName = user?.user_metadata?.full_name || "Caregiver";
   
@@ -297,34 +297,9 @@ export default function CaregiverDashboard({
         </div>
       )}
 
-      {/* 4. Quét QR & Đơn thuốc AI To Rõ (Thay thế logo cộng thuốc, đẩy nội dung lên) */}
-      <div 
-        onClick={onOpenScan}
-        className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white rounded-3xl p-4.5 flex items-center justify-between shadow-lg shadow-blue-600/20 border border-blue-400/30 cursor-pointer active:scale-[0.98] transition-all group"
-      >
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-13 h-13 rounded-2xl bg-white/20 text-white flex items-center justify-center shadow-inner shrink-0 border border-white/30 group-hover:scale-105 transition-transform">
-            <Scan size={28} strokeWidth={2.5} />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-[10px] font-black tracking-wider uppercase bg-white/25 px-2 py-0.5 rounded-full">
-                Quét AI & QR
-              </span>
-              <span className="text-amber-300 text-xs font-bold">✨ Nhận diện tức thì</span>
-            </div>
-            <h3 className="text-white font-black text-base sm:text-lg leading-tight truncate">
-              QUÉT ĐƠN THUỐC BÁC SĨ (AI)
-            </h3>
-            <p className="text-blue-100 text-xs mt-0.5 font-medium truncate">
-              Tự động phân tích đơn thuốc & lên lịch nhắc chuẩn y khoa
-            </p>
-          </div>
-        </div>
-        <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0 group-hover:translate-x-0.5 transition-transform">
-          <ChevronRight size={20} />
-        </div>
-      </div>
+
+      {/* (Đã chuyển nút Quét QR & AI lên thanh điều hướng chính giữa) */}
+
 
       {/* 5. Timeline Today (Gom thuốc cùng giờ theo cữ & Hỗ trợ sắp xếp Sort) */}
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex flex-col gap-4">
