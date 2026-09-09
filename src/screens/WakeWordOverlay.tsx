@@ -1,79 +1,69 @@
-import React, { useEffect, useState } from "react";
-import { useWakeWord } from "./useWakeWord"; // Nhớ sửa lại đường dẫn cho đúng nếu file khác thư mục
+import React, { useState } from "react";
+import { useWakeWord } from "../hooks/useWakeWord"; 
 import { Mic, PhoneCall, AlertOctagon, X } from "lucide-react";
-import { cn } from "../lib/utils";
+import { cn } from "../lib/utils"; 
 
 export default function WakeWordOverlay() {
   const [isOpen, setIsOpen] = useState(false);
   
   // Gọi bộ não AI lắng nghe ngầm
-  const { isListening, lastTranscript } = useWakeWord({
-    enabled: true, // Luôn bật
-    pauseWhen: isOpen, // Khi giao diện đang mở thì mic tàng hình tạm nghỉ
-    onDetected: () => {
-      setIsOpen(true); // Tự động BẬT GIAO DIỆN khi nghe chữ "HeyMedi"
-      // TODO: Phát ra âm thanh "Ting" nhẹ ở đây nếu muốn
-    }
+  const { lastTranscript } = useWakeWord({
+    enabled: true, 
+    pauseWhen: isOpen, 
+    onDetected: () => setIsOpen(true)
   });
 
-  // Nếu giao diện đang tắt, không hiển thị gì cả (nhưng mic ngầm vẫn chạy)
   if (!isOpen) return null;
 
   return (
-    // Lớp phủ đen mờ đè lên toàn bộ app (z-50)
-    <div className="fixed inset-0 z-[999] flex flex-col items-center justify-end bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-[999] flex flex-col items-center justify-end bg-black/70 backdrop-blur-md animate-in fade-in duration-300">
       
-      {/* Nút tắt thủ công */}
       <button 
         onClick={() => setIsOpen(false)}
-        className="absolute top-8 right-6 p-2 bg-white/20 rounded-full text-white hover:bg-white/40 transition-all"
+        className="absolute top-10 right-6 p-3 bg-white/20 rounded-full text-white hover:bg-white/40 transition-all cursor-pointer"
       >
-        <X size={24} />
+        <X size={28} />
       </button>
 
-      {/* Nội dung giao diện AI */}
-      <div className="w-full bg-gradient-to-b from-[#1a2b4b] to-[#0d172e] rounded-t-3xl p-6 shadow-2xl flex flex-col items-center gap-6 pb-12 animate-in slide-in-from-bottom-full duration-500">
+      <div className="w-full h-[45vh] bg-gradient-to-b from-[#1a2b4b] to-[#050b14] rounded-t-[40px] p-6 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] flex flex-col items-center justify-start pt-16 gap-8 animate-in slide-in-from-bottom-full duration-500 relative border-t border-white/10">
         
-        {/* Hiệu ứng Vòng sóng âm (Pulsing Orb) giống Siri/Gemini */}
-        <div className="relative flex items-center justify-center mt-[-40px]">
-          <div className="absolute w-24 h-24 bg-blue-500 rounded-full animate-ping opacity-30" />
-          <div className="absolute w-20 h-20 bg-blue-400 rounded-full animate-pulse opacity-50" />
-          <div className="w-16 h-16 bg-blue-600 rounded-full shadow-[0_0_40px_rgba(37,99,235,0.8)] z-10 flex items-center justify-center">
-            <Mic size={30} className="text-white animate-bounce" />
+        {/* Hiệu ứng Vòng sóng âm */}
+        <div className="absolute top-[-50px] flex items-center justify-center">
+          <div className="absolute w-32 h-32 bg-blue-500/20 rounded-full animate-ping" />
+          <div className="absolute w-24 h-24 bg-blue-400/40 rounded-full animate-pulse" />
+          <div className="w-20 h-20 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full shadow-[0_0_50px_rgba(37,99,235,1)] z-10 flex items-center justify-center border-4 border-[#1a2b4b]">
+            <Mic size={36} className="text-white animate-bounce" />
           </div>
         </div>
 
-        <div className="text-center space-y-2">
-          <h2 className="text-2xl font-black text-white tracking-wide">Tôi đang nghe...</h2>
-          <p className="text-blue-200/80 text-sm h-6 italic">
-            "{lastTranscript || "Hãy nói yêu cầu của bạn..."}"
+        <div className="text-center space-y-3 z-10">
+          <h2 className="text-3xl font-black text-white tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-blue-200 to-white">Tôi đang nghe...</h2>
+          <p className="text-blue-300 text-lg italic font-medium min-h-[30px]">
+            {lastTranscript ? `"${lastTranscript}"` : "Hãy nói yêu cầu của bạn..."}
           </p>
         </div>
 
-        {/* Các nút hành động khẩn cấp theo yêu cầu của bạn */}
-        <div className="grid grid-cols-2 gap-4 w-full mt-4">
+        <div className="flex gap-6 w-full justify-center mt-4 z-10">
           <button 
-            onClick={() => alert("Đang gọi điện cho Người nhà...")}
-            className="flex flex-col items-center justify-center gap-2 bg-white/10 hover:bg-white/20 p-4 rounded-2xl border border-white/5 transition-all"
+            onClick={() => alert("Đang gọi điện cho người nhà...")}
+            className="flex flex-col items-center gap-3 bg-white/5 hover:bg-white/10 px-8 py-4 rounded-3xl border border-white/10 transition-all cursor-pointer"
           >
-            <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mb-1">
-              <PhoneCall size={24} />
+            <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+              <PhoneCall size={28} />
             </div>
-            <span className="text-white font-bold text-sm">Gọi Người thân</span>
+            <span className="text-white font-bold text-base">Gọi người nhà</span>
           </button>
 
           <button 
-             onClick={() => alert("Đang phát tín hiệu SOS tới bệnh viện...")}
-            className="flex flex-col items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 p-4 rounded-2xl border border-red-500/20 transition-all"
+             onClick={() => alert("Đang phát tín hiệu SOS...")}
+            className="flex flex-col items-center gap-3 bg-red-500/10 hover:bg-red-500/20 px-8 py-4 rounded-3xl border border-red-500/20 transition-all cursor-pointer"
           >
-            <div className="w-12 h-12 rounded-full bg-red-500 text-white shadow-lg shadow-red-500/40 flex items-center justify-center mb-1">
-              <AlertOctagon size={24} />
+            <div className="w-14 h-14 rounded-full bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)] flex items-center justify-center">
+              <AlertOctagon size={28} />
             </div>
-            <span className="text-red-100 font-bold text-sm text-center">Cấp cứu (SOS)</span>
+            <span className="text-red-200 font-bold text-base">Cấp cứu SOS</span>
           </button>
         </div>
-        
-        <p className="text-gray-400 text-xs mt-2">Nói <b>"Tắt"</b> hoặc bấm dấu X để đóng</p>
       </div>
     </div>
   );
