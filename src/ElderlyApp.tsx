@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Home, Pill, Users, Settings, Scan, Mic } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Home, Pill, Users, Settings, Scan } from "lucide-react";
 import { cn } from "./lib/utils";
 import HomeScreen from "./HomeScreen";
 import MedsScreen from "./MedsScreen";
