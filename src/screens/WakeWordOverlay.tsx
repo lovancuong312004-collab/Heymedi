@@ -1,7 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useWakeWord } from "../hooks/useWakeWord"; 
 import { Mic, PhoneCall, AlertOctagon, X } from "lucide-react";
-import { cn } from "../lib/utils"; 
 
 export default function WakeWordOverlay() {
   const [isOpen, setIsOpen] = useState(false);
