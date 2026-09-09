@@ -1,68 +1,159 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWakeWord } from "../hooks/useWakeWord"; 
-import { Mic, PhoneCall, AlertOctagon, X } from "lucide-react";
+import { Mic, X, Loader2 } from "lucide-react";
 
 export default function WakeWordOverlay() {
   const [isOpen, setIsOpen] = useState(false);
+  const [aiState, setAiState] = useState<"greeting" | "listening" | "processing" | "acting">("listening");
+  const [aiMessage, setAiMessage] = useState("Dạ, cháu nghe đây ạ...");
   
-  // Gọi bộ não AI lắng nghe ngầm
-  const { lastTranscript } = useWakeWord({
+  const { lastTranscript, restartManually } = useWakeWord({
     enabled: true, 
     pauseWhen: isOpen, 
-    onDetected: () => setIsOpen(true)
+    onDetected: () => {
+      setIsOpen(true);
+      setAiState("greeting");
+    }
   });
+
+  // Hàm để AI phát ra âm thanh (Nói tiếng Việt)
+  const speak = (text: string, callback?: () => void) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel(); // Hủy giọng nói cũ nếu đang nói dở
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'vi-VN';
+      utterance.rate = 1.1; // Tốc độ nói
+      utterance.pitch = 1.2; // Giọng hơi thanh (giống nữ)
+      utterance.onend = () => { if(callback) callback(); };
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  // Xử lý khi vừa mở màn hình lên
+  useEffect(() => {
+    if (isOpen) {
+      setAiMessage("Dạ, cháu chào bác. Bác cần giúp gì ạ?");
+      speak("Dạ, cháu chào bác. Bác cần giúp gì ạ?", () => {
+        setAiState("listening");
+        restartManually(); // Mở lại mic để nghe lệnh tiếp theo
+      });
+    } else {
+      window.speechSynthesis.cancel();
+    }
+  }, [isOpen, restartManually]);
+
+  // BỘ NÃO PHÂN TÍCH LỆNH (Ý định của người dùng)
+  useEffect(() => {
+    if (!isOpen || aiState !== "listening" || !lastTranscript) return;
+
+    const text = lastTranscript.toLowerCase();
+    console.log("Người dùng nói:", text);
+
+    // 1. Kịch bản KHẨN CẤP (SOS)
+    if (text.includes("cứu") || text.includes("mệt") || text.includes("đau") || text.includes("khó thở") || text.includes("gọi người nhà")) {
+      setAiState("processing");
+      setAiMessage(`"${lastTranscript}"`);
+      
+      setTimeout(() => {
+        setAiState("acting");
+        setAiMessage("Đang phát tín hiệu khẩn cấp tới người nhà...");
+        speak("Bác bình tĩnh nhé. Cháu đang gọi báo động khẩn cấp cho người nhà ngay đây ạ!", () => {
+          // Thực thi hàm gọi SOS ở đây (hiện tại để alert demo)
+          alert("🚨 HỆ THỐNG ĐANG GỌI CHO NGƯỜI NHÀ VÀ BỆNH VIỆN!");
+          setIsOpen(false);
+        });
+      }, 1000);
+      return;
+    }
+
+    // 2. Kịch bản HỎI THUỐC
+    if (text.includes("thuốc") || text.includes("uống gì") || text.includes("giờ nào")) {
+      setAiState("processing");
+      setAiMessage(`"${lastTranscript}"`);
+      
+      setTimeout(() => {
+        setAiState("acting");
+        setAiMessage("Đang mở lịch trình dùng thuốc...");
+        speak("Dạ, hệ thống đang mở lịch trình uống thuốc chi tiết hôm nay cho bác xem nhé.", () => {
+          alert("💊 CHUYỂN HƯỚNG SANG MÀN HÌNH LỊCH THUỐC!");
+          setIsOpen(false);
+        });
+      }, 1000);
+      return;
+    }
+
+    // 3. Kịch bản ĐÓNG/TẮT
+    if (text.includes("tắt") || text.includes("thôi") || text.includes("đóng") || text.includes("không có gì")) {
+      setAiState("processing");
+      speak("Dạ vâng, cháu xin phép tắt ạ. Bác cần gì cứ gọi Hey Medi nhé.", () => {
+        setIsOpen(false);
+      });
+      return;
+    }
+
+    // Nếu AI không hiểu lệnh, tiếp tục lắng nghe
+    if (text.trim() !== "" && !text.includes("hey")) {
+       setAiMessage(`"${lastTranscript}"`);
+    }
+
+  }, [lastTranscript, isOpen, aiState]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[999] flex flex-col items-center justify-end bg-black/70 backdrop-blur-md animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-black/85 backdrop-blur-xl animate-in fade-in duration-300">
       
       <button 
         onClick={() => setIsOpen(false)}
-        className="absolute top-10 right-6 p-3 bg-white/20 rounded-full text-white hover:bg-white/40 transition-all cursor-pointer"
+        className="absolute top-12 right-6 p-3 bg-white/10 rounded-full text-white/50 hover:bg-white/20 hover:text-white transition-all cursor-pointer z-50"
       >
         <X size={28} />
       </button>
 
-      <div className="w-full h-[45vh] bg-gradient-to-b from-[#1a2b4b] to-[#050b14] rounded-t-[40px] p-6 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] flex flex-col items-center justify-start pt-16 gap-8 animate-in slide-in-from-bottom-full duration-500 relative border-t border-white/10">
+      {/* Giao diện Quả cầu AI trung tâm (Chuẩn Apple Siri) */}
+      <div className="flex flex-col items-center justify-center gap-12 w-full max-w-md px-6">
         
-        {/* Hiệu ứng Vòng sóng âm */}
-        <div className="absolute top-[-50px] flex items-center justify-center">
-          <div className="absolute w-32 h-32 bg-blue-500/20 rounded-full animate-ping" />
-          <div className="absolute w-24 h-24 bg-blue-400/40 rounded-full animate-pulse" />
-          <div className="w-20 h-20 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full shadow-[0_0_50px_rgba(37,99,235,1)] z-10 flex items-center justify-center border-4 border-[#1a2b4b]">
-            <Mic size={36} className="text-white animate-bounce" />
+        {/* Lời thoại của AI hoặc của người dùng */}
+        <div className="h-24 flex items-end justify-center text-center">
+          <h2 className={`text-2xl sm:text-3xl font-medium tracking-wide transition-all duration-500 ${
+            aiState === "greeting" || aiState === "acting" ? "text-blue-300 font-semibold" : "text-white italic font-light"
+          }`}>
+            {aiMessage}
+          </h2>
+        </div>
+
+        {/* Quả cầu sóng âm ma thuật */}
+        <div className="relative flex items-center justify-center w-48 h-48 mt-8">
+          {/* Các lớp sóng tỏa ra khi đang nghe */}
+          {aiState === "listening" && (
+            <>
+              <div className="absolute w-full h-full bg-blue-500/20 rounded-full animate-ping" style={{ animationDuration: '2s' }} />
+              <div className="absolute w-3/4 h-3/4 bg-blue-400/30 rounded-full animate-pulse" />
+            </>
+          )}
+
+          {/* Vòng quay khi đang xử lý (Processing) */}
+          {aiState === "processing" && (
+             <div className="absolute w-36 h-36 border-4 border-t-blue-400 border-r-transparent border-b-purple-500 border-l-transparent rounded-full animate-spin" />
+          )}
+
+          {/* Lõi quả cầu */}
+          <div className={`relative z-10 w-28 h-28 rounded-full flex items-center justify-center shadow-[0_0_60px_rgba(37,99,235,0.6)] transition-all duration-500 ${
+            aiState === "acting" ? "bg-emerald-500 shadow-emerald-500/50 scale-110" :
+            aiState === "processing" ? "bg-indigo-600 scale-95" :
+            "bg-gradient-to-br from-blue-400 to-indigo-600"
+          }`}>
+            {aiState === "processing" ? (
+              <Loader2 size={40} className="text-white animate-spin" />
+            ) : (
+              <Mic size={44} className="text-white" />
+            )}
           </div>
         </div>
-
-        <div className="text-center space-y-3 z-10">
-          <h2 className="text-3xl font-black text-white tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-blue-200 to-white">Tôi đang nghe...</h2>
-          <p className="text-blue-300 text-lg italic font-medium min-h-[30px]">
-            {lastTranscript ? `"${lastTranscript}"` : "Hãy nói yêu cầu của bạn..."}
-          </p>
-        </div>
-
-        <div className="flex gap-6 w-full justify-center mt-4 z-10">
-          <button 
-            onClick={() => alert("Đang gọi điện cho người nhà...")}
-            className="flex flex-col items-center gap-3 bg-white/5 hover:bg-white/10 px-8 py-4 rounded-3xl border border-white/10 transition-all cursor-pointer"
-          >
-            <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <PhoneCall size={28} />
-            </div>
-            <span className="text-white font-bold text-base">Gọi người nhà</span>
-          </button>
-
-          <button 
-             onClick={() => alert("Đang phát tín hiệu SOS...")}
-            className="flex flex-col items-center gap-3 bg-red-500/10 hover:bg-red-500/20 px-8 py-4 rounded-3xl border border-red-500/20 transition-all cursor-pointer"
-          >
-            <div className="w-14 h-14 rounded-full bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)] flex items-center justify-center">
-              <AlertOctagon size={28} />
-            </div>
-            <span className="text-red-200 font-bold text-base">Cấp cứu SOS</span>
-          </button>
-        </div>
+        
+        <p className="text-white/30 text-sm font-light mt-12 animate-pulse">
+          {aiState === "listening" ? "Đang lắng nghe lệnh của bạn..." : ""}
+        </p>
       </div>
     </div>
   );
