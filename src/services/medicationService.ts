@@ -1,5 +1,4 @@
 import { supabase } from '../lib/supabase';
-import { saveMedicalDocument } from './medicalDocumentService';
 
 export interface Medication {
   id: string;
@@ -677,24 +676,7 @@ export async function saveDiagnosisRecord(
       localStorage.setItem(storageKey, JSON.stringify(existingList));
     }
 
-    // 2. Tự động đồng bộ vào Kho Tài Liệu Y Tế & Bệnh Án (medical_documents)
-    try {
-      await saveMedicalDocument(patientId, {
-        type: "consultation",
-        title: `Phiếu khám / Chẩn đoán: ${newRecord.diagnosis}`,
-        hospitalName: newRecord.hospital_name,
-        doctorName: newRecord.doctor_name,
-        date: newRecord.date,
-        diagnosis: newRecord.diagnosis,
-        summary: `Chẩn đoán y tế: ${newRecord.diagnosis}. Đơn vị khám: ${newRecord.hospital_name}. Bác sĩ: ${newRecord.doctor_name}. Tái khám sau ${newRecord.revisit_days} ngày.`,
-        cautions: [],
-        keyMetrics: []
-      });
-    } catch (e) {
-      console.warn("Lưu medical_documents song song:", e);
-    }
-
-    // 3. Thử cập nhật vào bảng profiles nếu có
+    // 2. Thử cập nhật vào bảng profiles nếu có
     try {
       await supabase
         .from('profiles')

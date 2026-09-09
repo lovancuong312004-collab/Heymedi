@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { 
   Home, 
   Pill, 
-  Bell, 
-  Users,
-  Scan
+  BarChart3, 
+  Settings,
+  Users
 } from "lucide-react";
 import { cn } from "./lib/utils";
 
@@ -27,7 +27,6 @@ import { recordSosAlert } from "./services/emergencySosService";
 import { realtimeBridge } from "./services/realtimeBridge";
 import { supabase } from "./lib/supabase";
 import { useSettings } from "./contexts/SettingsContext";
-import { stopSpeech } from "./utils/voiceAssistant";
 
 interface Props {
   user: any;
@@ -56,11 +55,6 @@ function CaregiverAppContent({ user, onLogout }: Props) {
   const [sosAlert, setSosAlert] = useState<SOSAlertPayload | null>(null);
   const [pillProofAlert, setPillProofAlert] = useState<PillProofPayload | null>(null);
   const [unreadMissedCount, setUnreadMissedCount] = useState<number>(getUnreadMissedCallCount());
-
-  // Ngắt giọng đọc ngay khi đổi tab
-  useEffect(() => {
-    stopSpeech();
-  }, [activeTab]);
 
   useEffect(() => {
     const handleMissedUpdated = () => {
@@ -341,6 +335,7 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         {activeTab === "dashboard" && (
           <CaregiverDashboard
             user={user}
+            unreadMissedCount={unreadMissedCount}
             onOpenCall={() => handleStartCall()}
             onOpenScan={() => setIsScanOpen(true)}
             onOpenAddMed={() => setIsAddMedOpen(true)}
@@ -356,16 +351,31 @@ function CaregiverAppContent({ user, onLogout }: Props) {
         )}
         {activeTab === "family" && <CaregiverFamilyScreen user={user} />}
         {activeTab === "notifications" && (
-          <NotificationsScreen
-            onOpenCall={() => handleStartCall()}
-          />
+          <div className="flex flex-col h-full">
+            {/* Header with back button */}
+            <div className="bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3">
+              <button
+                onClick={() => setActiveTab("dashboard")}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-700 transition-colors cursor-pointer text-sm font-bold"
+                title="Quay lại Trang chủ"
+              >
+                ←
+              </button>
+              <h2 className="text-base font-black text-[#1a2b4b]">Thông báo & Cuộc gọi</h2>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <NotificationsScreen
+                onOpenCall={() => handleStartCall()}
+              />
+            </div>
+          </div>
         )}
         {activeTab === "reports" && <AIReportScreen />}
         {activeTab === "settings" && <CaregiverSettings user={user} onLogout={onLogout} />}
       </div>
 
-      {/* Bottom Navigation: GHIM CỐ ĐỊNH Ở ĐÁY VỚI NÚT QUÉT ĐƠN AI NỔI Ở GIỮA */}
-      <div className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-100 px-2 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40 relative">
+      {/* Bottom Navigation: 5 TAB CHUẨN KHÔNG BAO GIỜ BỊ ĐẨY MẤT CÀI ĐẶT */}
+      <div className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-100 px-1 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40">
         <CaregiverNavItem
           icon={<Home size={22} />}
           label={t("nav.caregiver_home")}
@@ -378,21 +388,6 @@ function CaregiverAppContent({ user, onLogout }: Props) {
           isActive={activeTab === "meds"}
           onClick={() => setActiveTab("meds")}
         />
-
-        {/* Nút Quét Đơn AI Nổi Bật Chính Giữa */}
-        <button
-          type="button"
-          onClick={() => setIsScanOpen(true)}
-          className="relative -top-4 flex flex-col items-center justify-center cursor-pointer group select-none transition-transform active:scale-90"
-        >
-          <div className="w-13 h-13 rounded-full bg-gradient-to-tr from-primary via-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-primary/35 border-4 border-white group-hover:scale-105 transition-all">
-            <Scan size={24} strokeWidth={2.5} />
-          </div>
-          <span className="text-[10px] font-black text-primary mt-0.5 tracking-tight">
-            Quét Đơn AI
-          </span>
-        </button>
-
         <CaregiverNavItem
           icon={<Users size={22} />}
           label={t("nav.caregiver_family")}
@@ -400,11 +395,16 @@ function CaregiverAppContent({ user, onLogout }: Props) {
           onClick={() => setActiveTab("family")}
         />
         <CaregiverNavItem
-          icon={<Bell size={22} />}
-          label={t("nav.caregiver_notifications")}
-          isActive={activeTab === "notifications"}
-          onClick={() => setActiveTab("notifications")}
-          badgeCount={unreadMissedCount > 0 ? unreadMissedCount : undefined}
+          icon={<BarChart3 size={22} />}
+          label={t("nav.caregiver_reports")}
+          isActive={activeTab === "reports"}
+          onClick={() => setActiveTab("reports")}
+        />
+        <CaregiverNavItem
+          icon={<Settings size={22} />}
+          label={t("nav.caregiver_settings")}
+          isActive={activeTab === "settings"}
+          onClick={() => setActiveTab("settings")}
         />
       </div>
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calendar, Phone, Plus, Scan, CheckCircle2, Clock, AlertCircle, ChevronRight, Sparkles, Loader2, Hand, Camera, X } from "lucide-react";
+import { Calendar, Phone, Scan, CheckCircle2, Clock, AlertCircle, ChevronRight, Sparkles, Loader2, Hand, Camera, X, Bell, ArrowUpDown, SlidersHorizontal } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import { getTodaySchedule, getOverdueReminders, markAsTaken, getMedicationTimingOffset, getPillProof, type Reminder } from "../services/medicationService";
 import { useFamily } from "../contexts/FamilyContext";
@@ -9,6 +9,7 @@ import { cleanMedicineTitle } from "../utils/geminiVision";
 
 interface Props {
   user: any;
+  unreadMissedCount?: number;
   onOpenCall: () => void;
   onNavigateTab: (tabId: string) => void;
   onOpenAddMed: () => void;
@@ -17,10 +18,11 @@ interface Props {
 
 export default function CaregiverDashboard({
   user,
+  unreadMissedCount,
   onOpenCall,
   onNavigateTab,
-  onOpenAddMed,
-  onOpenScan: _onOpenScan
+  onOpenAddMed: _onOpenAddMed,
+  onOpenScan
 }: Props) {
   const caregiverName = user?.user_metadata?.full_name || "Caregiver";
   
@@ -33,6 +35,7 @@ export default function CaregiverDashboard({
   const [loading, setLoading] = useState(true);
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [dashboardProofPhoto, setDashboardProofPhoto] = useState<{ url: string; medName: string } | null>(null);
+  const [sortMode, setSortMode] = useState<'time_asc' | 'time_desc' | 'pending_first' | 'done_first'>('time_asc');
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentDate(new Date()), 1000);
@@ -165,13 +168,9 @@ export default function CaregiverDashboard({
 
   return (
     <div className="p-5 flex flex-col gap-4 pb-24">
-      {/* 1. Header (User Profile & Switcher) */}
+      {/* 1. Header (User Profile & Switcher & Notifications) */}
       <div className="flex items-center justify-between mt-2">
-        <div 
-          onClick={() => onNavigateTab("settings")}
-          className="flex items-center gap-3 cursor-pointer hover:opacity-90 transition-opacity"
-          title="Chạm để mở Cài đặt người chăm sóc"
-        >
+        <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full overflow-hidden bg-emerald-100 border-2 border-white shadow-sm shrink-0 flex items-center justify-center font-bold text-emerald-800 text-sm">
             {user?.user_metadata?.avatar_url ? (
               <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
@@ -187,19 +186,35 @@ export default function CaregiverDashboard({
           </div>
         </div>
 
-        {/* Cared Person Pill */}
-        <div 
-          onClick={() => onNavigateTab("family")}
-          className="bg-white border border-gray-100 shadow-sm rounded-full py-1.5 px-3 flex items-center gap-2 cursor-pointer active:scale-95 transition-transform"
-        >
-          <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs overflow-hidden shrink-0">
-            {patientInfo?.avatar_url ? (
-              <img src={patientInfo.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
-            ) : (
-              (patientName || "T")[0].toUpperCase()
-            )}
+        <div className="flex items-center gap-2">
+          {/* Nút chuông thông báo có badge số lượng */}
+          <button
+            onClick={() => onNavigateTab("notifications")}
+            className="relative w-10 h-10 rounded-full bg-white border border-gray-100 shadow-sm flex items-center justify-center text-gray-600 hover:text-primary active:scale-95 transition-all cursor-pointer"
+            title="Xem thông báo"
+          >
+            <Bell size={20} />
+            {unreadMissedCount && unreadMissedCount > 0 ? (
+              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-danger text-white text-[10px] font-black flex items-center justify-center shadow-md animate-pulse">
+                {unreadMissedCount > 9 ? "9+" : unreadMissedCount}
+              </span>
+            ) : null}
+          </button>
+
+          {/* Cared Person Pill */}
+          <div 
+            onClick={() => onNavigateTab("family")}
+            className="bg-white border border-gray-100 shadow-sm rounded-full py-1.5 px-3 flex items-center gap-2 cursor-pointer active:scale-95 transition-transform"
+          >
+            <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs overflow-hidden shrink-0">
+              {patientInfo?.avatar_url ? (
+                <img src={patientInfo.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                (patientName || "T")[0].toUpperCase()
+              )}
+            </div>
+            <span className="text-xs font-bold text-[#1a2b4b] max-w-[80px] truncate">{patientInfo?.name || 'người thân'}</span>
           </div>
-          <span className="text-xs font-bold text-[#1a2b4b] max-w-[80px] truncate">{patientInfo?.name || 'người thân'}</span>
         </div>
       </div>
 
@@ -282,140 +297,310 @@ export default function CaregiverDashboard({
         </div>
       )}
 
-      {/* 4. Quick Action */}
+      {/* 4. Quét QR & Đơn thuốc AI To Rõ (Thay thế logo cộng thuốc, đẩy nội dung lên) */}
       <div 
-        onClick={onOpenAddMed}
-        className="w-full bg-white rounded-2xl p-4 flex items-center justify-between border border-gray-100 shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
+        onClick={onOpenScan}
+        className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white rounded-3xl p-4.5 flex items-center justify-between shadow-lg shadow-blue-600/20 border border-blue-400/30 cursor-pointer active:scale-[0.98] transition-all group"
       >
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 bg-primary rounded-xl text-white flex items-center justify-center shadow-sm shrink-0">
-            <Plus size={24} strokeWidth={2.5} />
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="w-13 h-13 rounded-2xl bg-white/20 text-white flex items-center justify-center shadow-inner shrink-0 border border-white/30 group-hover:scale-105 transition-transform">
+            <Scan size={28} strokeWidth={2.5} />
           </div>
           <div className="min-w-0">
-            <h3 className="text-[#1a2b4b] font-bold text-sm leading-tight truncate">
-              Thêm thuốc cho {patientInfo?.name || 'người thân'}
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-[10px] font-black tracking-wider uppercase bg-white/25 px-2 py-0.5 rounded-full">
+                Quét AI & QR
+              </span>
+              <span className="text-amber-300 text-xs font-bold">✨ Nhận diện tức thì</span>
+            </div>
+            <h3 className="text-white font-black text-base sm:text-lg leading-tight truncate">
+              QUÉT ĐƠN THUỐC BÁC SĨ (AI)
             </h3>
-            <p className="text-gray-400 text-xs mt-1 leading-tight">Cài đặt cữ nhắc, lộ trình & liều lượng</p>
+            <p className="text-blue-100 text-xs mt-0.5 font-medium truncate">
+              Tự động phân tích đơn thuốc & lên lịch nhắc chuẩn y khoa
+            </p>
           </div>
         </div>
-        <ChevronRight size={18} className="text-gray-400 shrink-0" />
+        <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0 group-hover:translate-x-0.5 transition-transform">
+          <ChevronRight size={20} />
+        </div>
       </div>
 
-      {/* 5. Timeline Today */}
+      {/* 5. Timeline Today (Gom thuốc cùng giờ theo cữ & Hỗ trợ sắp xếp Sort) */}
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex flex-col gap-4">
-        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-          <h3 className="text-[#1a2b4b] font-bold text-base">Lịch trình hôm nay của {patientInfo?.name || 'người thân'}</h3>
-          <button
-            onClick={() => onNavigateTab("meds")}
-            className="text-primary text-xs font-bold flex items-center gap-0.5 hover:underline"
-          >
-            Chi tiết <ChevronRight size={14} />
-          </button>
+        {/* Header & Sort Controls */}
+        <div className="flex flex-col gap-2.5 border-b border-gray-100 pb-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[#1a2b4b] font-bold text-base">
+              Lịch trình hôm nay của {patientInfo?.name || 'người thân'}
+            </h3>
+            <button
+              onClick={() => onNavigateTab("meds")}
+              className="text-primary text-xs font-bold flex items-center gap-0.5 hover:underline"
+            >
+              Chi tiết <ChevronRight size={14} />
+            </button>
+          </div>
+
+          {/* Thanh công cụ Sắp xếp & Đồng bộ cữ thuốc */}
+          <div className="flex items-center justify-between gap-1 overflow-x-auto py-0.5 scrollbar-none">
+            <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium shrink-0">
+              <SlidersHorizontal size={13} className="text-primary" />
+              <span>Sắp xếp:</span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setSortMode(sortMode === 'time_asc' ? 'time_desc' : 'time_asc')}
+                className={cn(
+                  "px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer",
+                  sortMode === 'time_asc' || sortMode === 'time_desc'
+                    ? "bg-blue-50 text-primary border border-blue-200"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                )}
+                title="Sắp xếp theo giờ uống"
+              >
+                <Clock size={12} />
+                <span>{sortMode === 'time_desc' ? "Giờ (Tối ➔ Sáng)" : "Giờ (Sáng ➔ Tối)"}</span>
+                <ArrowUpDown size={11} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSortMode(sortMode === 'pending_first' ? 'time_asc' : 'pending_first')}
+                className={cn(
+                  "px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer",
+                  sortMode === 'pending_first'
+                    ? "bg-amber-50 text-amber-800 border border-amber-200"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                )}
+              >
+                Chờ uống trước
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSortMode(sortMode === 'done_first' ? 'time_asc' : 'done_first')}
+                className={cn(
+                  "px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer",
+                  sortMode === 'done_first'
+                    ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                )}
+              >
+                Đã xong trước
+              </button>
+            </div>
+          </div>
         </div>
 
+        {/* Danh sách cữ thuốc */}
         <div className="flex flex-col gap-4">
           {loading ? (
-            <div className="flex justify-center py-4">
+            <div className="flex justify-center py-6">
               <Loader2 size={24} className="text-gray-400 animate-spin" />
             </div>
           ) : schedule.length === 0 ? (
-            <div className="text-center py-4 text-gray-400 text-sm">Chưa có lịch thuốc nào hôm nay.</div>
-          ) : schedule.map((item) => {
-            const isDone = item.status === "taken";
-            
-            // Checking if it's overdue (missed or pending and time passed > 15mins)
-            const scheduledTime = new Date(item.scheduled_time);
-            const now = new Date();
-            const isOverdue = item.status === "missed" || (item.status === "pending" && (now.getTime() - scheduledTime.getTime() > 15 * 60000));
+            <div className="text-center py-6 text-gray-400 text-sm">Chưa có lịch thuốc nào hôm nay.</div>
+          ) : (() => {
+            // Gom các thuốc cùng giờ vào 1 Cữ (Session)
+            const map = new Map<string, Reminder[]>();
+            schedule.forEach(item => {
+              const d = new Date(item.scheduled_time);
+              const timeKey = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+              if (!map.has(timeKey)) {
+                map.set(timeKey, []);
+              }
+              map.get(timeKey)!.push(item);
+            });
 
-            const timingOffset = isDone && item.taken_at 
-              ? getMedicationTimingOffset(item.scheduled_time, item.taken_at)
-              : null;
-            const proofUrl = (item as any).proof_image_url || getPillProof(item.id);
+            let sessions = Array.from(map.entries()).map(([timeStr, meds]) => {
+              const hour = parseInt(timeStr.split(':')[0], 10);
+              const sessionLabel = hour < 11 ? "Cữ Sáng" : hour < 14 ? "Cữ Trưa" : hour < 19 ? "Cữ Chiều/Tối" : "Cữ Đêm";
+              const isAllDone = meds.every(m => m.status === 'taken');
+              const hasOverdue = meds.some(m => {
+                const sched = new Date(m.scheduled_time).getTime();
+                return m.status === 'missed' || (m.status === 'pending' && (Date.now() - sched > 15 * 60000));
+              });
+              return {
+                timeStr,
+                sessionLabel,
+                meds,
+                isAllDone,
+                hasOverdue,
+                allIds: meds.map(m => m.id)
+              };
+            });
 
-            return (
-              <div key={item.id} className="flex items-center justify-between p-2 rounded-2xl hover:bg-gray-50/80 transition-colors">
-                <div className="flex items-center gap-3">
-                  {/* Status Indicator */}
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0">
-                    {isDone ? (
-                      <CheckCircle2 size={24} className="text-success fill-success/20" strokeWidth={2.5} />
-                    ) : isOverdue ? (
-                      <AlertCircle size={24} className="text-danger fill-danger/20" strokeWidth={2.5} />
+            // Thực hiện Sort theo lựa chọn người dùng
+            if (sortMode === 'time_desc') {
+              sessions.sort((a, b) => b.timeStr.localeCompare(a.timeStr));
+            } else if (sortMode === 'pending_first') {
+              sessions.sort((a, b) => {
+                if (a.isAllDone === b.isAllDone) return a.timeStr.localeCompare(b.timeStr);
+                return a.isAllDone ? 1 : -1;
+              });
+            } else if (sortMode === 'done_first') {
+              sessions.sort((a, b) => {
+                if (a.isAllDone === b.isAllDone) return a.timeStr.localeCompare(b.timeStr);
+                return a.isAllDone ? -1 : 1;
+              });
+            } else {
+              sessions.sort((a, b) => a.timeStr.localeCompare(b.timeStr));
+            }
+
+            return sessions.map((session) => (
+              <div 
+                key={session.timeStr} 
+                className={cn(
+                  "rounded-2xl border p-3.5 transition-all flex flex-col gap-2.5",
+                  session.isAllDone 
+                    ? "bg-emerald-50/40 border-emerald-200/70"
+                    : session.hasOverdue 
+                    ? "bg-red-50/40 border-red-200/80" 
+                    : "bg-gray-50/60 border-gray-200/80"
+                )}
+              >
+                {/* Session Header */}
+                <div className="flex items-center justify-between gap-2 border-b border-gray-200/50 pb-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={cn(
+                      "font-black text-sm px-2 py-0.5 rounded-lg shrink-0",
+                      session.isAllDone 
+                        ? "bg-emerald-100 text-emerald-800"
+                        : session.hasOverdue 
+                        ? "bg-red-100 text-red-800"
+                        : "bg-blue-100 text-primary"
+                    )}>
+                      {session.timeStr}
+                    </span>
+                    <span className="text-xs font-bold text-[#1a2b4b] truncate">
+                      {session.sessionLabel}
+                    </span>
+                    <span className="text-[11px] font-semibold text-gray-500 bg-white/80 border border-gray-200 px-2 py-0.5 rounded-full shrink-0">
+                      {session.meds.length} loại thuốc
+                    </span>
+                  </div>
+
+                  {/* Cả cữ actions */}
+                  <div className="shrink-0">
+                    {session.isAllDone ? (
+                      <span className="text-[11px] font-extrabold text-emerald-700 bg-white border border-emerald-300 px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-xs">
+                        <CheckCircle2 size={12} /> Đã xong cữ
+                      </span>
                     ) : (
-                      <Clock size={24} className="text-blue-400" strokeWidth={2} />
+                      <button
+                        onClick={() => handleMarkDone(session.allIds)}
+                        disabled={markingId !== null}
+                        className="text-[11px] font-bold text-primary hover:text-white bg-white hover:bg-primary border border-blue-200 px-2.5 py-1 rounded-lg shadow-xs active:scale-95 transition-all cursor-pointer"
+                        title="Đánh dấu đã uống tất cả thuốc trong cữ này"
+                      >
+                        {markingId && session.allIds.includes(markingId) ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          "Đã uống cả cữ"
+                        )}
+                      </button>
                     )}
                   </div>
-
-                  <div className="min-w-0 pr-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[#1a2b4b] font-bold text-sm truncate max-w-[170px] sm:max-w-xs">
-                        {cleanMedicineTitle(item.medication?.name || "Thuốc")}
-                      </span>
-                      <span className="text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full font-bold shrink-0">
-                        {scheduledTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <p className="text-gray-500 text-xs mt-0.5 truncate max-w-[210px] sm:max-w-xs">
-                      {item.medication?.dosage ? `${item.medication.dosage} • ` : ""}{item.medication?.instructions?.split('|')[0] || "Theo chỉ dẫn"}
-                    </p>
-                  </div>
                 </div>
 
-                {/* Right badge / call */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {isOverdue ? (
-                    <button
-                      onClick={onOpenCall}
-                      className="bg-danger hover:bg-danger/90 text-white text-xs font-bold px-3 py-1.5 rounded-xl active:scale-95 transition-all shadow-sm flex items-center gap-1"
-                    >
-                      <Phone size={12} className="fill-white" />
-                      Gọi nhắc
-                    </button>
-                  ) : isDone ? (
-                    <div className="flex items-center gap-1.5">
-                      {timingOffset ? (
-                        <span className={cn(
-                          "text-xs font-black px-2.5 py-1 rounded-lg border",
-                          timingOffset.badgeColor === "emerald"
-                            ? "text-success bg-green-50 border-green-200"
-                            : timingOffset.badgeColor === "rose"
-                            ? "text-danger bg-red-50 border-red-200 animate-pulse font-black"
-                            : "text-amber-800 bg-amber-50 border-amber-200 font-bold"
-                        )}>
-                          {timingOffset.label}
-                        </span>
-                      ) : (
-                        <span className="text-xs font-bold text-success bg-green-50 border border-green-100 px-2.5 py-1 rounded-lg">
-                          Đã uống
-                        </span>
-                      )}
+                {/* Danh sách từng loại thuốc trong cữ */}
+                <div className="flex flex-col gap-2">
+                  {session.meds.map((item) => {
+                    const isDone = item.status === "taken";
+                    const scheduledTime = new Date(item.scheduled_time);
+                    const isOverdue = item.status === "missed" || (item.status === "pending" && (Date.now() - scheduledTime.getTime() > 15 * 60000));
+                    const timingOffset = isDone && item.taken_at 
+                      ? getMedicationTimingOffset(item.scheduled_time, item.taken_at)
+                      : null;
+                    const proofUrl = (item as any).proof_image_url || getPillProof(item.id);
 
-                      {proofUrl && (
-                        <button
-                          type="button"
-                          onClick={() => setDashboardProofPhoto({ url: proofUrl, medName: item.medication?.name || "Thuốc" })}
-                          className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-primary border border-blue-200 active:scale-95 transition-all cursor-pointer"
-                          title="Xem ảnh chụp vỉ thuốc minh chứng"
-                        >
-                          <Camera size={14} />
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => handleMarkDone(item.id)}
-                      disabled={markingId === item.id}
-                      className="text-xs font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-primary px-2.5 py-1 rounded-lg transition-all active:scale-95"
-                      title="Đánh dấu đã uống hộ"
-                    >
-                      {markingId === item.id ? "Đang lưu..." : "Chờ uống"}
-                    </button>
-                  )}
+                    return (
+                      <div 
+                        key={item.id} 
+                        className="bg-white rounded-xl p-2.5 border border-gray-100 flex items-center justify-between gap-2 shadow-xs"
+                      >
+                        {/* Left: Info */}
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0">
+                            {isDone ? (
+                              <CheckCircle2 size={20} className="text-success fill-success/20" strokeWidth={2.5} />
+                            ) : isOverdue ? (
+                              <AlertCircle size={20} className="text-danger fill-danger/20" strokeWidth={2.5} />
+                            ) : (
+                              <Clock size={20} className="text-blue-400" strokeWidth={2} />
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-[#1a2b4b] font-bold text-xs sm:text-sm truncate">
+                              {cleanMedicineTitle(item.medication?.name || "Thuốc")}
+                            </h4>
+                            <p className="text-gray-500 text-[11px] truncate">
+                              {item.medication?.dosage ? `${item.medication.dosage} • ` : ""}{item.medication?.instructions || "Theo chỉ dẫn"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Right: Badges & Buttons không bao giờ bị cắt xén hay tràn viền */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isOverdue ? (
+                            <button
+                              onClick={onOpenCall}
+                              className="bg-danger hover:bg-danger/90 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg active:scale-95 transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                            >
+                              <Phone size={11} className="fill-white" />
+                              <span>Nhắc</span>
+                            </button>
+                          ) : isDone ? (
+                            <div className="flex items-center gap-1 shrink-0">
+                              {timingOffset ? (
+                                <span className={cn(
+                                  "text-[10.5px] font-bold px-2 py-0.5 rounded-md border shrink-0",
+                                  timingOffset.badgeColor === "emerald"
+                                    ? "text-success bg-green-50 border-green-200"
+                                    : timingOffset.badgeColor === "rose"
+                                    ? "text-danger bg-red-50 border-red-200 font-black"
+                                    : "text-amber-800 bg-amber-50 border-amber-200"
+                                )}>
+                                  {timingOffset.label}
+                                </span>
+                              ) : (
+                                <span className="text-[10.5px] font-bold text-success bg-green-50 border border-green-100 px-2 py-0.5 rounded-md shrink-0">
+                                  Đã uống
+                                </span>
+                              )}
+
+                              {proofUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => setDashboardProofPhoto({ url: proofUrl, medName: item.medication?.name || "Thuốc" })}
+                                  className="p-1 rounded-md bg-blue-50 hover:bg-blue-100 text-primary border border-blue-200 active:scale-95 transition-all cursor-pointer shrink-0"
+                                  title="Xem ảnh chụp vỉ thuốc minh chứng"
+                                >
+                                  <Camera size={13} />
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleMarkDone(item.id)}
+                              disabled={markingId === item.id}
+                              className="text-[11px] font-bold text-gray-700 bg-gray-100 hover:bg-blue-50 hover:text-primary px-2.5 py-1 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0"
+                              title="Đánh dấu đã uống"
+                            >
+                              {markingId === item.id ? "Đang lưu..." : "Chờ uống"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            );
-          })}
+            ));
+          })()}
         </div>
       </div>
 

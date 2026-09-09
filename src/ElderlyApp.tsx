@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Home, Pill, Users, Settings, Scan } from "lucide-react";
+import { Home, Pill, Users, Settings, Scan, AlertCircle } from "lucide-react";
 import { cn } from "./lib/utils";
 import HomeScreen from "./HomeScreen";
 import MedsScreen from "./MedsScreen";
@@ -7,8 +7,9 @@ import FamilyScreen from "./FamilyScreen";
 import SettingsScreen from "./SettingsScreen";
 import IncomingCallModal from "./components/IncomingCallModal";
 import CallModal from "./caregiver/CallModal";
+import SOSModal from "./screens/SOSModal";
 import ScanUnknownMedModal from "./screens/ScanUnknownMedModal";
-import { silentAudioUnlock, stopSpeech } from "./utils/voiceAssistant";
+import { silentAudioUnlock } from "./utils/voiceAssistant";
 import { recordMissedCall } from "./services/missedCallService";
 import { realtimeBridge } from "./services/realtimeBridge";
 import { supabase } from "./lib/supabase";
@@ -24,17 +25,29 @@ type ElderlyTab = "home" | "meds" | "family" | "settings";
 export default function ElderlyApp({ user, onLogout }: Props) {
   const { t } = useSettings();
   const [activeTab, setActiveTab] = useState<ElderlyTab>("home");
-  const [isScanOpen, setIsScanOpen] = useState(false);
-
-  // Tự động ngắt giọng đọc AI ngay khi người già đổi tab
-  useEffect(() => {
-    stopSpeech();
-  }, [activeTab]);
 
   // Realtime Pill Verification Mode (Cấu hình minh chứng ảnh uống thuốc từ người chăm sóc)
   const [verificationMode, setVerificationMode] = useState<'photo_required' | 'simple_only' | 'both'>(() => {
     return (localStorage.getItem('heymedi_pill_verification_mode') as any) || 'both';
   });
+
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [isGlobalSOSOpen, setIsGlobalSOSOpen] = useState(false);
+  const [floatingSosEnabled, setFloatingSosEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('heymedi_floating_sos') !== 'false';
+  });
+
+  useEffect(() => {
+    const handleSosToggle = () => {
+      setFloatingSosEnabled(localStorage.getItem('heymedi_floating_sos') !== 'false');
+    };
+    window.addEventListener('heymedi_floating_sos_changed', handleSosToggle);
+    window.addEventListener('storage', handleSosToggle);
+    return () => {
+      window.removeEventListener('heymedi_floating_sos_changed', handleSosToggle);
+      window.removeEventListener('storage', handleSosToggle);
+    };
+  }, []);
 
   // Realtime Calling state
   const [incomingCall, setIncomingCall] = useState<{
@@ -266,6 +279,22 @@ export default function ElderlyApp({ user, onLogout }: Props) {
   return (
     <div className="w-full h-full flex flex-col overflow-hidden relative bg-[#F4F7FB]">
       
+      {/* Modal SOS Toàn Cục Khẩn Cấp */}
+      <SOSModal 
+        isOpen={isGlobalSOSOpen} 
+        onClose={() => setIsGlobalSOSOpen(false)} 
+        contactName="Người thân" 
+        patientId={user?.id}
+        patientName={user?.user_metadata?.full_name || "Bác"}
+      />
+
+      {/* Modal Quét Mã QR & Thuốc Ngoài Danh Mục */}
+      <ScanUnknownMedModal
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
+        user={user}
+      />
+
       {/* Modal Cuộc gọi đến toàn cục */}
       {incomingCall && (
         <IncomingCallModal
@@ -296,12 +325,22 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         />
       )}
 
-      {/* Modal Quét Thuốc Ngoài Đơn / Mã QR cho Người Già */}
-      <ScanUnknownMedModal
-        isOpen={isScanOpen}
-        onClose={() => setIsScanOpen(false)}
-        user={user}
-      />
+      {/* Nút SOS Cứu Hộ Khẩn Cấp Nổi Toàn Cục (Fixed Bottom-Right, luôn nổi trên mọi tab và khi cuộn) */}
+      {floatingSosEnabled && (
+        <button
+          onClick={() => setIsGlobalSOSOpen(true)}
+          aria-label="Cấp cứu SOS khẩn cấp"
+          className="fixed bottom-22 right-4 z-50 flex items-center gap-2 bg-gradient-to-r from-red-600 via-rose-600 to-red-600 text-white pl-3.5 pr-4 py-3 rounded-full shadow-[0_6px_25px_rgba(220,38,38,0.55)] border-2 border-white active:scale-90 hover:scale-105 transition-all cursor-pointer animate-pulse select-none group"
+        >
+          <div className="w-8 h-8 rounded-full bg-white text-red-600 flex items-center justify-center shrink-0 shadow-sm group-hover:rotate-12 transition-transform">
+            <AlertCircle size={20} strokeWidth={3} className="fill-red-100" />
+          </div>
+          <div className="flex flex-col text-left">
+            <span className="font-black text-sm leading-tight tracking-wider">SOS</span>
+            <span className="text-[10px] font-bold text-red-100 leading-tight">Cứu hộ</span>
+          </div>
+        </button>
+      )}
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto pb-6 min-h-0 overscroll-contain">
@@ -317,22 +356,22 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         {activeTab === "settings" && <SettingsScreen user={user} onLogout={onLogout} />}
       </div>
 
-      {/* Bottom Navigation: GHIM CỐ ĐỊNH Ở ĐÁY VỚI NÚT QUÉT QR NỔI Ở GIỮA */}
+      {/* Bottom Navigation: GHIM CỐ ĐỊNH Ở ĐÁY VỚI NÚT QUÉT QR TO Ở CHÍNH GIỮA */}
       <div className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-100 px-2 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40 relative">
         <NavItem icon={<Home size={22} />} label={t("nav.home")} isActive={activeTab === "home"} onClick={() => setActiveTab("home")} />
         <NavItem icon={<Pill size={22} />} label={t("nav.meds")} isActive={activeTab === "meds"} onClick={() => setActiveTab("meds")} />
-
-        {/* Nút Quét AI Nổi Bật Chính Giữa */}
+        
+        {/* Nút Quét QR To Nổi Bật Ở Chính Giữa */}
         <button
-          type="button"
-          onClick={() => setIsScanOpen(true)}
-          className="relative -top-4 flex flex-col items-center justify-center cursor-pointer group select-none transition-transform active:scale-90"
+          onClick={() => setIsScanModalOpen(true)}
+          className="flex flex-col items-center justify-center -mt-6 cursor-pointer group active:scale-95 transition-transform"
+          title="Quét mã QR & Nhận diện thuốc"
         >
-          <div className="w-13 h-13 rounded-full bg-gradient-to-tr from-primary via-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-primary/35 border-4 border-white group-hover:scale-105 transition-all">
-            <Scan size={24} strokeWidth={2.5} />
+          <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-primary to-blue-500 text-white flex items-center justify-center shadow-lg shadow-blue-500/35 border-4 border-white group-hover:scale-105 transition-transform">
+            <Scan size={26} strokeWidth={2.5} />
           </div>
-          <span className="text-[10px] font-black text-primary mt-0.5 tracking-tight">
-            Quét AI
+          <span className="text-[11px] font-extrabold text-primary mt-1">
+            Quét QR
           </span>
         </button>
 

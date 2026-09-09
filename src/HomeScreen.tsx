@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { Calendar, Volume2, Scan, AlertCircle, Loader2, Clock, CheckCircle2, ChevronRight } from "lucide-react";
+import { Calendar, Volume2, AlertCircle, Loader2, Clock, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 import { Lunar } from "lunar-javascript";
 import SOSModal from "./screens/SOSModal";
 import MedicationAlertScreen, { type DoseSessionAlert } from "./screens/MedicationAlertScreen";
 import ScanUnknownMedModal from "./screens/ScanUnknownMedModal";
 import { getTodaySchedule, markAsTaken, type Reminder } from "./services/medicationService";
-import { announceDoseSession, announceDailyBriefing } from "./utils/voiceAssistant";
+import { announceDoseSession, announceDailyBriefing, speakVietnamese } from "./utils/voiceAssistant";
 import { cleanMedicineTitle } from "./utils/geminiVision";
 import { supabase } from "./lib/supabase";
 
@@ -200,11 +200,42 @@ export default function HomeScreen({
     };
   });
 
+  const [isUpcomingExpanded, setIsUpcomingExpanded] = useState(true);
+
+  // Lọc các thuốc sắp tới (chưa uống và có lịch sau hiện tại)
   const upcomingReminders = (schedule || []).filter(r => 
     r?.status === 'pending' && new Date(r.scheduled_time).getTime() > nowTime
   );
 
   const nextReminder = upcomingReminders[0] || null;
+  const nextSessionTimeStr = nextReminder ? (() => {
+    const d = new Date(nextReminder.scheduled_time);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  })() : null;
+
+  // Gom tất cả các thuốc thuộc cùng cữ sắp tới gần nhất (cùng giờ & phút)
+  const nextSessionReminders = nextSessionTimeStr ? upcomingReminders.filter(r => {
+    const d = new Date(r.scheduled_time);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` === nextSessionTimeStr;
+  }) : [];
+
+  // Đọc hướng dẫn chi tiết của từng thuốc bằng giọng nói tiếng Việt
+  const handleSpeakMedicine = (medName: string, dosage?: string, instructions?: string) => {
+    const cleanName = cleanMedicineTitle(medName);
+    const text = `Thuốc ${cleanName}. Liều lượng: ${dosage || "uống theo đơn"}. Hướng dẫn: ${instructions || "uống với nước ấm"}.`;
+    speakVietnamese(text);
+  };
+
+  // Đọc toàn bộ danh sách các thuốc trong cữ sắp tới
+  const handleSpeakUpcomingSession = () => {
+    if (nextSessionReminders.length === 0) return;
+    const timeText = nextSessionTimeStr || "";
+    const medsList = nextSessionReminders.map(r => 
+      `${cleanMedicineTitle(r.medication?.name || "Thuốc")}, ${r.medication?.dosage || ""}`
+    ).join(". ");
+    const text = `Cữ thuốc tiếp theo lúc ${timeText} gồm có ${nextSessionReminders.length} loại thuốc: ${medsList}. Bác nhớ uống đúng giờ nhé.`;
+    speakVietnamese(text);
+  };
 
   return (
     <>
@@ -359,43 +390,120 @@ export default function HomeScreen({
                 <Loader2 size={28} className="text-primary animate-spin mb-2" />
                 <p className="text-gray-500 text-xs">Đang tải lịch thuốc...</p>
               </div>
-            ) : nextReminder ? (
-              <>
-                <p className="text-primary font-bold mb-1 text-base flex items-center gap-1.5">
-                  <Clock size={16} />
-                  <span>
-                    {new Date(nextReminder.scheduled_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} 
-                    {new Date(nextReminder.scheduled_time).getHours() >= 12 ? ' chiều' : ' sáng'}
-                  </span>
-                </p>
-                <h2 className="text-[#1a2b4b] font-black text-2xl mb-1 w-[68%] leading-tight truncate">
-                  {cleanMedicineTitle(nextReminder.medication?.name || "Thuốc không tên")}
-                </h2>
-                <p className="text-gray-600 text-sm font-medium w-[68%] leading-snug line-clamp-2">
-                  {nextReminder.medication?.dosage} • {nextReminder.medication?.instructions}
-                </p>
+            ) : nextSessionReminders.length > 0 ? (
+              <div className="flex flex-col h-full">
+                {/* Header cữ thuốc sắp tới */}
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 text-primary font-black text-base sm:text-lg">
+                      <Clock size={18} />
+                      <span>
+                        {nextSessionTimeStr} 
+                        {parseInt((nextSessionTimeStr || "0").split(':')[0], 10) >= 12 ? ' chiều' : ' sáng'}
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold text-primary bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                      {nextSessionReminders.length} loại thuốc
+                    </span>
+                  </div>
 
-                <div className="absolute right-3 top-5">
-                  <div className="w-20 h-20 bg-gray-50 rounded-2xl shadow-inner border border-gray-100 overflow-hidden flex items-center justify-center">
-                    {nextReminder.medication?.image_url ? (
-                      <img src={nextReminder.medication.image_url} alt="Ảnh thuốc" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-3xl">💊</span>
+                  <div className="flex items-center gap-1.5">
+                    {/* Nút bấm loa đọc cả cữ */}
+                    <button
+                      type="button"
+                      onClick={handleSpeakUpcomingSession}
+                      className="w-9 h-9 rounded-full bg-blue-50 hover:bg-blue-100 text-primary flex items-center justify-center active:scale-90 transition-all cursor-pointer shadow-xs"
+                      title="Nghe đọc danh sách các thuốc trong cữ"
+                    >
+                      <Volume2 size={18} />
+                    </button>
+
+                    {/* Nút mở rộng / thu gọn danh sách */}
+                    {nextSessionReminders.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsUpcomingExpanded(!isUpcomingExpanded)}
+                        className="px-2 py-1 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs flex items-center gap-0.5 active:scale-95 transition-all cursor-pointer"
+                        title={isUpcomingExpanded ? "Thu gọn danh sách" : "Xem chi tiết từng thuốc"}
+                      >
+                        <span>{isUpcomingExpanded ? "Thu gọn" : "Chi tiết"}</span>
+                        {isUpcomingExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </button>
                     )}
                   </div>
                 </div>
 
-                <div className="mt-auto pt-5">
+                {/* Danh sách các thuốc trong cữ (Dạng trượt xuống xem chi tiết từng thuốc & bấm loa) */}
+                {isUpcomingExpanded ? (
+                  <div className="flex flex-col gap-2.5 max-h-[300px] overflow-y-auto pr-1">
+                    {nextSessionReminders.map((r) => {
+                      const cleanName = cleanMedicineTitle(r.medication?.name || "Thuốc");
+                      return (
+                        <div 
+                          key={r.id}
+                          className="bg-gray-50/90 border border-gray-200/80 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-xs hover:bg-gray-50 transition-colors"
+                        >
+                          {/* Ảnh thuốc */}
+                          <div className="w-12 h-12 rounded-xl bg-white border border-gray-200 overflow-hidden flex items-center justify-center shrink-0 shadow-2xs">
+                            {r.medication?.image_url ? (
+                              <img src={r.medication.image_url} alt="Ảnh thuốc" className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-xl">💊</span>
+                            )}
+                          </div>
+
+                          {/* Tên & liều dùng */}
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-[#1a2b4b] font-black text-sm sm:text-base leading-tight truncate">
+                              {cleanName}
+                            </h4>
+                            <p className="text-gray-600 text-xs font-semibold mt-0.5 truncate">
+                              {r.medication?.dosage || "1 viên"} • {r.medication?.instructions || "Uống theo chỉ dẫn"}
+                            </p>
+                          </div>
+
+                          {/* Nút bấm loa để đọc từng thuốc */}
+                          <button
+                            type="button"
+                            onClick={() => handleSpeakMedicine(r.medication?.name || "Thuốc", r.medication?.dosage, r.medication?.instructions)}
+                            className="w-10 h-10 rounded-full bg-white hover:bg-blue-50 text-primary border border-blue-200 flex items-center justify-center shrink-0 shadow-xs active:scale-90 transition-transform cursor-pointer"
+                            title={`Nghe hướng dẫn uống thuốc ${cleanName}`}
+                          >
+                            <Volume2 size={20} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-gray-50 rounded-2xl border border-gray-200 flex items-center justify-between">
+                    <p className="text-gray-700 font-bold text-xs truncate flex-1">
+                      {nextSessionReminders.map(r => cleanMedicineTitle(r.medication?.name || "Thuốc")).join(" • ")}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setIsUpcomingExpanded(true)}
+                      className="text-xs font-bold text-primary ml-2 hover:underline cursor-pointer"
+                    >
+                      Xem chi tiết
+                    </button>
+                  </div>
+                )}
+
+                {/* Nút Uống tất cả / Đã uống */}
+                <div className="mt-4 pt-2 border-t border-gray-100">
                   <button 
-                    onClick={() => handleTakeDoseSession(undefined, [nextReminder.id])}
-                    disabled={takingId === nextReminder.id}
-                    className="w-full bg-primary hover:bg-blue-700 text-white py-3.5 rounded-2xl font-bold text-base shadow-md shadow-blue-500/20 active:scale-[0.98] transition-all tracking-wide disabled:opacity-70 flex items-center justify-center gap-2 cursor-pointer"
+                    onClick={() => handleTakeDoseSession(undefined, nextSessionReminders.map(r => r.id))}
+                    disabled={takingId !== null}
+                    className="w-full bg-primary hover:bg-blue-700 text-white py-3.5 rounded-2xl font-black text-base shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all tracking-wide disabled:opacity-70 flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    {takingId === nextReminder.id ? <Loader2 size={20} className="animate-spin" /> : null}
-                    <span>{takingId === nextReminder.id ? "ĐANG LƯU..." : "UỐNG SỚM / ĐÃ UỐNG"}</span>
+                    {takingId !== null ? <Loader2 size={20} className="animate-spin" /> : null}
+                    <span>
+                      {takingId !== null ? "ĐANG LƯU..." : `UỐNG SỚM / ĐÃ UỐNG (${nextSessionReminders.length} THUỐC)`}
+                    </span>
                   </button>
                 </div>
-              </>
+              </div>
             ) : overdueReminders.length > 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center py-5 text-center">
                 <div className="w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center mb-2 text-amber-600">
@@ -416,42 +524,24 @@ export default function HomeScreen({
           </div>
         </div>
 
-        {/* Thao tác Uống thuốc ngoài đơn & SOS Cấp Cứu */}
-        <div className="flex flex-col gap-2.5 mt-auto pt-2">
-          {/* Uống thuốc ngoài đơn (AI kiểm tra an toàn) */}
-          <div 
-            onClick={() => setIsScanUnknownOpen(true)}
-            className="w-full bg-[#EBF1FF] hover:bg-[#E0EBFF] rounded-2xl p-3.5 flex items-center justify-between border border-[#D1E0FF] shadow-xs cursor-pointer active:scale-[0.98] transition-all select-none"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 shadow-xs">
-                <Scan size={20} strokeWidth={2.5} />
-              </div>
-              <div>
-                <h4 className="font-black text-xs sm:text-sm text-[#1a2b4b]">UỐNG THUỐC NGOÀI ĐƠN</h4>
-                <p className="text-[11px] text-gray-500 font-medium">Kiểm tra an toàn & tương tác bệnh nền</p>
-              </div>
+        {/* Nút SOS Cấp cứu khẩn cấp (Đã bỏ thuốc ngoài đơn, có nút SOS nổi toàn cục hỗ trợ) */}
+        <div 
+          onClick={() => setIsSOSOpen(true)}
+          className="w-full bg-[#FFF0F0] hover:bg-red-100/70 rounded-2xl p-3.5 flex items-center justify-between border border-[#FFD6D6] shadow-sm cursor-pointer active:scale-[0.98] transition-all select-none mt-auto"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 bg-danger rounded-xl text-white flex flex-col items-center justify-center shadow-sm shrink-0">
+              <AlertCircle size={22} strokeWidth={2.5} />
+              <span className="text-[9px] font-bold mt-0.5 leading-none">SOS</span>
             </div>
-            <ChevronRight size={18} className="text-primary shrink-0" />
-          </div>
-
-          {/* Nút SOS Cấp Cứu Nổi Bật Toàn Chiều Rộng */}
-          <div 
-            onClick={() => setIsSOSOpen(true)}
-            className="w-full bg-[#FFF0F0] hover:bg-[#FFE5E5] rounded-2xl p-3.5 flex items-center justify-between border-2 border-red-200 shadow-sm cursor-pointer active:scale-[0.98] transition-all select-none"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 bg-danger rounded-xl text-white flex flex-col items-center justify-center shadow-md shadow-danger/25 shrink-0">
-                <AlertCircle size={22} strokeWidth={2.5} />
-                <span className="text-[9px] font-black mt-0.5 leading-none">SOS</span>
-              </div>
-              <div>
-                <h3 className="text-danger font-black text-sm sm:text-base leading-tight">SOS CẤP CỨU KHẨN CẤP</h3>
-                <p className="text-danger/80 text-xs mt-0.5 leading-tight font-medium">Hú còi & gọi video người thân ngay lập tức</p>
-              </div>
+            <div>
+              <h3 className="text-danger font-bold text-sm leading-tight">SOS cấp cứu khẩn cấp</h3>
+              <p className="text-danger/80 text-xs mt-0.5 leading-tight">Hú còi & gọi video người thân ngay lập tức</p>
             </div>
-            <ChevronRight size={18} className="text-danger shrink-0" />
           </div>
+          <span className="text-xs font-black text-white bg-danger px-3 py-1.5 rounded-xl shadow-xs">
+            BÁO ĐỘNG
+          </span>
         </div>
       </div>
     </>

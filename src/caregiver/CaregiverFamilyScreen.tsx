@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Plus, Scan, CheckCircle2, Users, Phone, ShieldCheck, UserPlus, HeartHandshake, Loader2, X, Trash2, Check } from "lucide-react";
+import { Plus, Scan, CheckCircle2, Users, Phone, ShieldCheck, UserPlus, HeartHandshake, Loader2, X, Trash2, Check, Heart, ChevronRight } from "lucide-react";
 import ScanLinkModal from "../screens/ScanLinkModal";
+import HealthProfileModal from "../screens/HealthProfileModal";
 import CallModal from "./CallModal";
 import { useFamily } from "../contexts/FamilyContext";
 import { supabase } from "../lib/supabase";
@@ -10,6 +11,7 @@ import { cn } from "../lib/utils";
 export default function CaregiverFamilyScreen({ user }: { user: any }) {
   const { linkedPatientId, patientInfo, isLoading, refreshLink } = useFamily();
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [isHealthProfileOpen, setIsHealthProfileOpen] = useState(false);
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [coCaregivers, setCoCaregivers] = useState<any[]>([]);
   const [loadingCaregivers, setLoadingCaregivers] = useState(false);
@@ -294,6 +296,35 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
             </div>
           </div>
 
+          {/* Card: Hồ sơ sức khỏe & Sổ khám bệnh Bác sĩ của người bệnh */}
+          <div 
+            onClick={() => setIsHealthProfileOpen(true)}
+            className="bg-white rounded-3xl p-5 flex items-center justify-between border border-red-100 shadow-sm cursor-pointer hover:bg-red-50/20 active:scale-[0.98] transition-all group"
+          >
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-13 h-13 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center shrink-0 border border-red-100 shadow-sm group-hover:scale-105 transition-transform">
+                <Heart fill="currentColor" size={26} className="text-red-500" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                    Sổ Khám Bệnh Bác Sĩ
+                  </span>
+                  <span className="text-xs text-gray-400 font-semibold">Chỉ định y khoa</span>
+                </div>
+                <h3 className="text-[#1A2B4B] font-bold text-base leading-tight truncate">
+                  Hồ sơ sức khỏe của {patientName}
+                </h3>
+                <p className="text-gray-500 text-xs font-medium leading-relaxed truncate mt-0.5">
+                  Xem chẩn đoán, tiền sử bệnh, dị ứng thuốc & lịch hẹn tái khám của bác sĩ
+                </p>
+              </div>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-gray-50 group-hover:bg-red-50 flex items-center justify-center shrink-0 transition-colors">
+              <ChevronRight size={18} className="text-gray-400 group-hover:text-red-500 transition-colors" />
+            </div>
+          </div>
+
           {/* Card 2: Danh Sách Tất Cả Những Người Cùng Chăm Sóc (Family Care Team) */}
           <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex flex-col gap-3">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
@@ -501,6 +532,22 @@ export default function CaregiverFamilyScreen({ user }: { user: any }) {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Health Profile Modal cho Người Bệnh */}
+      {linkedPatientId && (
+        <HealthProfileModal
+          isOpen={isHealthProfileOpen}
+          onClose={() => setIsHealthProfileOpen(false)}
+          user={{
+            id: linkedPatientId,
+            user_metadata: {
+              full_name: patientName,
+              phone: patientInfo?.phone,
+              avatar_url: patientInfo?.avatar_url
+            }
+          }}
+        />
       )}
     </div>
   );

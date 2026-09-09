@@ -4,8 +4,7 @@ import {
   Calendar, 
   Activity, 
   MapPin, 
-  User, 
-  Pill,
+  User as UserIcon, 
   Heart, 
   Plus, 
   Edit3, 
@@ -24,17 +23,11 @@ import {
   AlertTriangle,
   ZoomIn,
   ShieldCheck,
-  ClipboardList,
-  Share2,
-  Printer,
-  Copy,
-  CheckCheck,
-  QrCode
+  ClipboardList
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { supabase } from "../lib/supabase";
 import ElderlyCameraCaptureModal from "../components/ElderlyCameraCaptureModal";
-import { getActiveMedications, type ActiveMedicationItem } from "../services/medicationService";
 import {
   saveMedicalDocument,
   getMedicalDocuments,
@@ -66,18 +59,12 @@ interface Props {
 export default function HealthProfileModal({ isOpen, onClose, user, onUpdated }: Props) {
   const meta = user?.user_metadata || {};
   const patientId = user?.id || "current_patient";
-  const fullName = meta.full_name || meta.name || (user?.email ? user.email.split('@')[0] : "Bệnh nhân");
 
   // Tab chuyển đổi: Chỉ số & Bệnh nền vs Tài liệu y tế & Phẫu thuật
   const [activeTab, setActiveTab] = useState<"vitals" | "documents">("vitals");
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-
-  // States xuất hồ sơ y tế cho Bác sĩ & Cấp cứu
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [activeMedicationsList, setActiveMedicationsList] = useState<ActiveMedicationItem[]>([]);
-  const [isCopied, setIsCopied] = useState(false);
 
   // Form states cho thông tin sinh trắc
   const [height, setHeight] = useState<number | string>(meta.height || 165);
@@ -146,56 +133,13 @@ export default function HealthProfileModal({ isOpen, onClose, user, onUpdated }:
     keyMetrics: []
   });
 
-  // Tải danh sách tài liệu y tế và đơn thuốc đang dùng khi mở modal hoặc đổi bệnh nhân
+  // Tải danh sách tài liệu y tế khi mở modal hoặc đổi bệnh nhân
   useEffect(() => {
     if (isOpen && patientId) {
       const docs = getMedicalDocuments(patientId);
       setMedicalDocs(docs);
-      getActiveMedications(patientId).then(list => {
-        setActiveMedicationsList(list);
-      }).catch(err => console.warn("Lỗi tải thuốc đang dùng:", err));
     }
   }, [isOpen, patientId]);
-
-  const handleCopyDoctorSummary = () => {
-    const age = dob ? Math.floor((new Date().getTime() - new Date(dob).getTime()) / (365.25 * 24 * 3600000)) : "--";
-    const medLines = activeMedicationsList.length > 0
-      ? activeMedicationsList.map(m => `• ${m.name}: ${m.dosage || "1 liều"} (${m.instructions?.split('|')[1]?.trim() || (m.nextScheduledTime ? m.nextScheduledTime.substring(11, 16) : "Theo đơn")}) - ${m.instructions?.split('|')[0] || "Uống theo đơn"}`).join('\n')
-      : "• Không có thuốc nào đang cài đặt";
-
-    const docLines = medicalDocs.length > 0
-      ? medicalDocs.slice(0, 3).map(d => `• [${d.date}] ${d.title} (${d.hospitalName}): ${d.diagnosis || d.summary}`).join('\n')
-      : "• Chưa có hồ sơ khám/mổ trước đó";
-
-    const text = `🏥 [HỒ SƠ TÓM TẮT Y KHOA & CẤP CỨU - HEYMEDI]
-Bệnh nhân: Bác ${fullName.replace(/^bác\s+/i, '')}
-Tuổi / Ngày sinh: ${age} tuổi (${dob}) | Giới tính: ${gender}
-Nhóm máu: ${bloodType}
-Liên hệ khẩn cấp: ${emergencyPhone} (${meta.emergency_contact_name || "Người nhà"})
-Địa chỉ: ${address}
-
-🚨 CẢNH BÁO DỊ ỨNG THUỐC (QUAN TRỌNG):
-${allergies || "Chưa ghi nhận dị ứng thuốc"}
-
-🩺 TIỀN SỬ BỆNH LÝ NỀN / MÃN TÍNH:
-${diseases.length > 0 ? diseases.join(', ') : "Không có bệnh nền mãn tính"}
-
-💊 DANH SÁCH THUỐC ĐANG ĐIỀU TRỊ HIỆN TẠI:
-${medLines}
-
-📋 HỒ SƠ KHÁM BỆNH & PHẪU THUẬT GẦN NHẤT:
-${docLines}
----
-(Trích xuất từ Ứng dụng HeyMedi)`;
-
-    navigator.clipboard.writeText(text);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 3000);
-  };
-
-  const handlePrintMedicalReport = () => {
-    window.print();
-  };
 
   if (!isOpen) return null;
 
@@ -459,6 +403,8 @@ ${docLines}
     return d.type === selectedFilter;
   });
 
+  const fullName = meta.full_name || (user?.email ? user.email.split("@")[0] : "Bác");
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center animate-fade-in bg-black/60 backdrop-blur-sm p-0 sm:p-4">
       <div className="w-full h-[92vh] sm:h-auto sm:max-h-[90vh] sm:max-w-xl bg-[#F4F7FB] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-slide-up sm:animate-scale-up">
@@ -476,18 +422,6 @@ ${docLines}
           </div>
           
           <div className="flex items-center gap-2">
-            {/* Nút Xuất Hồ Sơ Y Khoa / Cấp Cứu cho Bác Sĩ */}
-            <button
-              type="button"
-              onClick={() => setShowExportModal(true)}
-              className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer transition-all shadow-2xs active:scale-95"
-              title="Xuất tóm tắt hồ sơ y tế cho bác sĩ xem hoặc theo dõi cấp cứu"
-            >
-              <Share2 size={13} />
-              <span className="hidden sm:inline">Xuất cho Bác sĩ</span>
-              <span className="sm:hidden">Xuất HS</span>
-            </button>
-
             {activeTab === "vitals" && (
               !isEditing ? (
                 <button
@@ -696,7 +630,7 @@ ${docLines}
               {/* Personal & Emergency Info */}
               <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-5 space-y-3">
                 <h4 className="font-extrabold text-sm text-[#1A2B4B] flex items-center gap-1.5 border-b border-gray-100 pb-2">
-                  <User size={16} className="text-gray-500" /> Thông tin cá nhân & Liên hệ SOS
+                  <UserIcon size={16} className="text-gray-500" /> Thông tin cá nhân & Liên hệ SOS
                 </h4>
 
                 <div className="space-y-3 pt-1 text-xs">
@@ -718,7 +652,7 @@ ${docLines}
 
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 font-medium flex items-center gap-1.5">
-                      <User size={15} /> Giới tính:
+                      <UserIcon size={15} /> Giới tính:
                     </span>
                     {isEditing ? (
                       <select
@@ -1449,293 +1383,6 @@ ${docLines}
               >
                 <X size={20} />
               </button>
-            </div>
-          </div>
-        )}
-
-        {/* Modal Tóm tắt Y khoa & Cấp cứu cho Bác sĩ (Xuất PDF / In / Sao chép Zalo) */}
-        {showExportModal && (
-          <div className="fixed inset-0 z-70 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-fade-in">
-            <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden border border-gray-200 animate-scale-up my-auto">
-              
-              {/* Header thanh công cụ (Ẩn khi in) */}
-              <div className="p-4 sm:p-5 bg-[#1A2B4B] text-white flex items-center justify-between gap-3 shrink-0 no-print">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center text-rose-400 font-black">
-                    <Activity size={22} />
-                  </div>
-                  <div>
-                    <h3 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
-                      <span>Tóm Tắt Y Khoa & Cấp Cứu</span>
-                      <span className="text-[10px] uppercase font-extrabold bg-rose-500 text-white px-2 py-0.5 rounded-full">Bác sĩ / Cấp cứu</span>
-                    </h3>
-                    <p className="text-xs text-blue-200">Trích xuất hồ sơ tóm tắt phục vụ khám chữa bệnh hoặc theo dõi khẩn cấp</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={handleCopyDoctorSummary}
-                    className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 active:scale-95 text-white font-bold text-xs px-3 py-2 rounded-xl transition-all cursor-pointer shadow-xs"
-                    title="Sao chép tóm tắt gửi nhanh qua Zalo / Tin nhắn cho Bác sĩ"
-                  >
-                    {isCopied ? <CheckCheck size={15} className="text-emerald-300" /> : <Copy size={15} />}
-                    <span className="hidden sm:inline">{isCopied ? "Đã chép!" : "Chép Zalo"}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handlePrintMedicalReport}
-                    className="flex items-center gap-1.5 bg-primary hover:bg-blue-600 active:scale-95 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-md"
-                    title="In bản A4 hoặc Lưu dạng PDF"
-                  >
-                    <Printer size={15} />
-                    <span className="hidden sm:inline">In / PDF</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowExportModal(false)}
-                    className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white active:scale-95 transition-all cursor-pointer ml-1"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Tờ tóm tắt Y khoa A4 Printable */}
-              <div className="flex-1 overflow-y-auto p-5 sm:p-8 space-y-6 bg-white text-[#1A2B4B]" id="heymedi-medical-export-sheet">
-                
-                {/* CSS Print Rules */}
-                <style>{`
-                  @media print {
-                    body * { visibility: hidden !important; }
-                    #heymedi-medical-export-sheet, #heymedi-medical-export-sheet * { visibility: visible !important; }
-                    #heymedi-medical-export-sheet {
-                      position: fixed !important;
-                      left: 0 !important;
-                      top: 0 !important;
-                      width: 100% !important;
-                      height: auto !important;
-                      padding: 20px 30px !important;
-                      background: white !important;
-                      z-index: 999999 !important;
-                    }
-                    .no-print { display: none !important; }
-                  }
-                `}</style>
-
-                {/* Tiêu đề Hồ sơ HeyMedi */}
-                <div className="flex items-start justify-between border-b-2 border-primary/20 pb-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl font-black tracking-tight text-primary">HeyMedi</span>
-                      <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">Y tế Thông minh</span>
-                    </div>
-                    <h2 className="text-lg sm:text-xl font-black text-[#1A2B4B] uppercase mt-1 tracking-wide">
-                      Bản Tóm Tắt Thông Tin Y Tế & Cấp Cứu
-                    </h2>
-                    <p className="text-xs text-gray-500 italic mt-0.5">Dành cho Bác sĩ điều trị, Bệnh viện & Nhân viên Cấp cứu Y tế</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-xs font-bold text-gray-700">Ngày xuất: <span className="font-semibold text-gray-900">{new Date().toLocaleDateString('vi-VN')}</span></p>
-                    <p className="text-xs font-bold text-gray-500">Mã BN: <span className="font-mono font-bold text-primary">BN-{patientId.substring(0, 8).toUpperCase()}</span></p>
-                  </div>
-                </div>
-
-                {/* Phần 1: Thông tin người bệnh & Liên hệ khẩn */}
-                <div className="bg-blue-50/60 rounded-2xl p-4 border border-blue-100">
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-blue-900 mb-3 flex items-center gap-1.5">
-                    <User size={14} className="text-primary" /> Thông tin bệnh nhân & Người liên hệ
-                  </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2.5 gap-x-4 text-xs">
-                    <div>
-                      <span className="text-gray-500 block">Họ và tên:</span>
-                      <span className="font-bold text-sm text-[#1A2B4B]">Bác {fullName.replace(/^bác\s+/i, '')}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 block">Ngày sinh / Tuổi:</span>
-                      <span className="font-bold text-[#1A2B4B]">
-                        {dob ? `${dob} (${Math.floor((new Date().getTime() - new Date(dob).getTime()) / (365.25 * 24 * 3600000))} tuổi)` : "--"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 block">Giới tính:</span>
-                      <span className="font-bold text-[#1A2B4B]">{gender || "Chưa rõ"}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 block">Nhóm máu:</span>
-                      <span className="font-black text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded-md inline-block">
-                        {bloodType || "Chưa rõ"}
-                      </span>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <span className="text-gray-500 block">Liên hệ khẩn cấp (Người nhà):</span>
-                      <span className="font-bold text-rose-600 flex items-center gap-1">
-                        <Phone size={12} />
-                        {emergencyPhone || "Chưa cập nhật"} {meta.emergency_contact_name ? `(${meta.emergency_contact_name})` : ""}
-                      </span>
-                    </div>
-                    {address && (
-                      <div className="col-span-2 sm:col-span-3">
-                        <span className="text-gray-500 block">Địa chỉ thường trú:</span>
-                        <span className="font-medium text-gray-800">{address}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Phần 2: CẢNH BÁO DỊ ỨNG THUỐC (ĐẶC BIỆT QUAN TRỌNG) */}
-                <div className="bg-red-50/90 border-2 border-red-300 rounded-2xl p-4 shadow-2xs">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-6 h-6 rounded-lg bg-red-600 text-white flex items-center justify-center font-black">
-                      <AlertTriangle size={15} />
-                    </div>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-red-700">
-                      Cảnh báo dị ứng thuốc (Bác sĩ & Dược sĩ đặc biệt lưu ý):
-                    </h4>
-                  </div>
-                  <div className="text-sm font-black text-red-900 bg-white/80 p-3 rounded-xl border border-red-200">
-                    {allergies ? allergies : "Chưa ghi nhận tiền sử dị ứng thuốc nguy hiểm."}
-                  </div>
-                </div>
-
-                {/* Phần 3: Tiền sử Bệnh nền mãn tính & Thể trạng */}
-                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
-                  <div className="flex items-center justify-between mb-2.5">
-                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#1A2B4B] flex items-center gap-1.5">
-                      <Heart size={14} className="text-rose-500" /> Bệnh lý nền & Chỉ số thể chất
-                    </h4>
-                    <span className="text-xs font-bold text-gray-500">
-                      Cao: {height || "--"}cm • Nặng: {weight || "--"}kg • BMI: <strong className="text-primary">{bmiVal}</strong> ({bmiCategory})
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {diseases.length > 0 ? (
-                      diseases.map((d, i) => (
-                        <span key={i} className="text-xs font-bold px-3 py-1 bg-white text-blue-900 border border-blue-200 rounded-lg shadow-2xs">
-                          🩺 {d}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-xs text-gray-500 italic">Chưa ghi nhận bệnh nền mạn tính.</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Phần 4: Danh sách thuốc đang điều trị hàng ngày */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#1A2B4B] flex items-center gap-1.5">
-                      <Pill size={15} className="text-primary" /> Thuốc đang điều trị tại nhà (Đơn hiện hành)
-                    </h4>
-                    <span className="text-xs font-bold text-gray-500">Tổng cộng: {activeMedicationsList.length} loại thuốc</span>
-                  </div>
-
-                  {activeMedicationsList.length > 0 ? (
-                    <div className="overflow-x-auto rounded-xl border border-gray-200">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="bg-gray-100/80 text-gray-700 font-bold border-b border-gray-200">
-                            <th className="p-2.5 w-10 text-center">STT</th>
-                            <th className="p-2.5">Tên thuốc</th>
-                            <th className="p-2.5">Liều dùng</th>
-                            <th className="p-2.5">Cữ uống trong ngày</th>
-                            <th className="p-2.5">Hướng dẫn</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {activeMedicationsList.map((m, idx) => (
-                            <tr key={m.id || idx} className="hover:bg-gray-50/60">
-                              <td className="p-2.5 font-bold text-center text-gray-400">{idx + 1}</td>
-                              <td className="p-2.5 font-bold text-[#1A2B4B]">{m.name}</td>
-                              <td className="p-2.5 font-semibold text-gray-700">{m.dosage || "1 viên"}</td>
-                              <td className="p-2.5">
-                                <span className="font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
-                                  {m.instructions?.split('|')[1]?.trim() || (m.nextScheduledTime ? m.nextScheduledTime.substring(11, 16) : "Hàng ngày")}
-                                </span>
-                              </td>
-                              <td className="p-2.5 text-gray-600 italic">{m.instructions?.split('|')[0] || "Theo chỉ định"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="p-4 bg-gray-50 rounded-xl text-center text-xs text-gray-500 italic border border-gray-100">
-                      Hiện tại chưa có thuốc nào đang cài đặt trong lộ trình nhắc nhở.
-                    </div>
-                  )}
-                </div>
-
-                {/* Phần 5: Lịch sử Khám bệnh & Phẫu thuật gần nhất (AI Trích xuất) */}
-                <div className="space-y-3">
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#1A2B4B] flex items-center gap-1.5">
-                    <FileText size={15} className="text-primary" /> Hồ sơ Khám bệnh & Biên bản phẫu thuật gần đây
-                  </h4>
-
-                  {medicalDocs.length > 0 ? (
-                    <div className="space-y-2">
-                      {medicalDocs.slice(0, 4).map((d) => (
-                        <div key={d.id} className="p-3 rounded-xl border border-gray-200 bg-gray-50/50 text-xs space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-primary text-sm flex items-center gap-1.5">
-                              {d.type === 'surgery_record' ? '🔪 ' : '📋 '} {d.title}
-                            </span>
-                            <span className="text-gray-500 font-semibold">{d.date} • {d.hospitalName || "Cơ sở y tế"}</span>
-                          </div>
-                          {d.diagnosis && (
-                            <p className="text-gray-800"><strong className="text-gray-700">Chẩn đoán:</strong> {d.diagnosis}</p>
-                          )}
-                          {d.procedureName && (
-                            <p className="text-indigo-900"><strong className="text-gray-700">Phương pháp can thiệp:</strong> {d.procedureName}</p>
-                          )}
-                          {d.summary && (
-                            <p className="text-gray-600 line-clamp-2"><strong className="text-gray-700">Tóm tắt:</strong> {d.summary}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-4 bg-gray-50 rounded-xl text-center text-xs text-gray-500 italic border border-gray-100">
-                      Chưa có tài liệu hồ sơ khám bệnh/phẫu thuật nào được lưu trữ.
-                    </div>
-                  )}
-                </div>
-
-                {/* Chân trang xác thực */}
-                <div className="pt-4 border-t border-gray-200 flex items-center justify-between text-[11px] text-gray-400">
-                  <div className="flex items-center gap-2">
-                    <QrCode size={28} className="text-gray-400" />
-                    <div>
-                      <p className="font-bold text-gray-600">Ứng dụng Quản lý Thuốc & Sức khỏe Cao tuổi HeyMedi</p>
-                      <p>Dữ liệu y khoa được lưu trữ bảo mật & mã hóa theo tiêu chuẩn chăm sóc gia đình.</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-gray-600">Xác nhận của Người giám hộ / Bệnh nhân</p>
-                    <p className="italic">(Ký & ghi rõ họ tên)</p>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Chân Modal tương tác (Ẩn khi in) */}
-              <div className="p-3.5 sm:p-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between shrink-0 no-print">
-                <p className="text-xs text-gray-500">
-                  💡 Nhấn <strong>"In / PDF"</strong> để in A4 ra giấy mang đến bệnh viện hoặc gửi file PDF cho bác sĩ.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowExportModal(false)}
-                  className="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold text-xs rounded-xl cursor-pointer transition-colors"
-                >
-                  Đóng
-                </button>
-              </div>
-
             </div>
           </div>
         )}
