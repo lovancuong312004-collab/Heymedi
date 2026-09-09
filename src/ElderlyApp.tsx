@@ -9,8 +9,7 @@ import IncomingCallModal from "./components/IncomingCallModal";
 import CallModal from "./caregiver/CallModal";
 import SOSModal from "./screens/SOSModal";
 import ScanUnknownMedModal from "./screens/ScanUnknownMedModal";
-import WakeWordOverlay from "./screens/WakeWordOverlay";
-import { useWakeWord } from "./hooks/useWakeWord";
+import WakeWordOverlay from "./screens/WakeWordOverlay"; // Đã import sẵn
 import { silentAudioUnlock } from "./utils/voiceAssistant";
 import { recordMissedCall } from "./services/missedCallService";
 import { realtimeBridge } from "./services/realtimeBridge";
@@ -28,34 +27,13 @@ export default function ElderlyApp({ user, onLogout }: Props) {
   const { t } = useSettings();
   const [activeTab, setActiveTab] = useState<ElderlyTab>("home");
 
-  // Realtime Pill Verification Mode (Cấu hình minh chứng ảnh uống thuốc từ người chăm sóc)
+  // Realtime Pill Verification Mode 
   const [verificationMode, setVerificationMode] = useState<'photo_required' | 'simple_only' | 'both'>(() => {
     return (localStorage.getItem('heymedi_pill_verification_mode') as any) || 'both';
   });
 
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [isGlobalSOSOpen, setIsGlobalSOSOpen] = useState(false);
-  const [isWakeWordOverlayOpen, setIsWakeWordOverlayOpen] = useState(false);
-  const [heyMediEnabled, setHeyMediEnabled] = useState<boolean>(() => {
-    return localStorage.getItem('heymedi_wakeword_enabled') === 'true';
-  });
-
-  useEffect(() => {
-    const handleToggle = () => {
-      setHeyMediEnabled(localStorage.getItem('heymedi_wakeword_enabled') === 'true');
-    };
-    window.addEventListener('heymedi_wakeword_changed', handleToggle);
-    window.addEventListener('storage', handleToggle);
-    return () => {
-      window.removeEventListener('heymedi_wakeword_changed', handleToggle);
-      window.removeEventListener('storage', handleToggle);
-    };
-  }, []);
-
-  // Callback khi wake word "heymedi" được phát hiện
-  const handleWakeWordDetected = useCallback(() => {
-    setIsWakeWordOverlayOpen(true);
-  }, []);
 
   // Realtime Calling state
   const [incomingCall, setIncomingCall] = useState<{
@@ -77,15 +55,6 @@ export default function ElderlyApp({ user, onLogout }: Props) {
     isInitiator?: boolean;
   } | null>(null);
 
-  // Pause wake word khi có modal đang mở (SOS, call, scan)
-  const shouldPauseWakeWord = isGlobalSOSOpen || isScanModalOpen || isWakeWordOverlayOpen || !!activeCall || !!incomingCall;
-
-  const { state: wakeWordState, isListening: isWakeWordListening } = useWakeWord({
-    enabled: heyMediEnabled,
-    onDetected: handleWakeWordDetected,
-    pauseWhen: shouldPauseWakeWord,
-    lang: "vi-VN",
-  });
 
   useEffect(() => {
     // 1. Silent Audio Unlock on first touch/click
@@ -96,7 +65,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
     window.addEventListener("click", handleFirstInteraction, { once: true });
     window.addEventListener("touchstart", handleFirstInteraction, { once: true });
 
-    // 2. Request Location (GPS) & Microphone permission only once on first onboarding
+    // 2. Request Location & Mic
     const permissionsAlreadyRequested = localStorage.getItem("heymedi_permissions_requested");
     if (!permissionsAlreadyRequested) {
       if (navigator.geolocation) {
@@ -129,20 +98,15 @@ export default function ElderlyApp({ user, onLogout }: Props) {
   incomingCallRef.current = incomingCall;
   const globalChannelRef = useRef<any>(null);
 
-  // Lắng nghe cuộc gọi đến & cấu hình xác nhận thuốc thời gian thực cho Người Bệnh
   useEffect(() => {
     const channel = supabase.channel('sos-emergency-alerts')
       .on('broadcast', { event: 'INCOMING_CALL' }, (event) => {
-        console.log("ElderlyApp received INCOMING_CALL:", event);
         const p = event.payload;
         if (!p || p.caller_id === user?.id) return;
         if (p.target_id && p.target_id !== user?.id) return;
 
-        // NẾU LÀ CUỘC GỌI KHẨN CẤP SOS (p.is_sos === true) -> TỰ ĐỘNG BẮT MÁY VÀ BẬT CAMERA NGAY LẬP TỨC!
         if (p.is_sos) {
-          console.log("🚨 CUỘC GỌI KHẨN CẤP SOS -> TỰ ĐỘNG BẮT MÁY & BẬT CAMERA!");
           setIncomingCall(null);
-
           const ch = globalChannelRef.current || supabase.channel('sos-emergency-alerts');
           ch.send({
             type: 'broadcast',
@@ -177,7 +141,6 @@ export default function ElderlyApp({ user, onLogout }: Props) {
       .on('broadcast', { event: 'CALL_ENDED' }, (event) => {
         const active = incomingCallRef.current;
         if (active && event.payload?.call_id === active.callId) {
-          // Ghi nhận cuộc gọi nhỡ nếu người gọi cúp máy trước khi người bệnh kịp trả lời
           recordMissedCall({
             callerName: active.callerName,
             callerRole: active.callerRole,
@@ -194,7 +157,6 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         }
       })
       .on('broadcast', { event: 'VERIFICATION_MODE_CHANGED' }, (event) => {
-        console.log("ElderlyApp received VERIFICATION_MODE_CHANGED:", event);
         if (event.payload?.mode) {
           setVerificationMode(event.payload.mode);
           localStorage.setItem('heymedi_pill_verification_mode', event.payload.mode);
@@ -297,7 +259,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
   return (
     <div className="w-full h-full flex flex-col overflow-hidden relative bg-[#F4F7FB]">
       
-      {/* Modal SOS Toàn Cục Khẩn Cấp */}
+      {/* Modal SOS */}
       <SOSModal 
         isOpen={isGlobalSOSOpen} 
         onClose={() => setIsGlobalSOSOpen(false)} 
@@ -306,14 +268,14 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         patientName={user?.user_metadata?.full_name || "Bác"}
       />
 
-      {/* Modal Quét Mã QR & Thuốc Ngoài Danh Mục */}
+      {/* Modal Quét Mã QR */}
       <ScanUnknownMedModal
         isOpen={isScanModalOpen}
         onClose={() => setIsScanModalOpen(false)}
         user={user}
       />
 
-      {/* Modal Cuộc gọi đến toàn cục */}
+      {/* Modal Cuộc gọi đến */}
       {incomingCall && (
         <IncomingCallModal
           isOpen={!!incomingCall}
@@ -326,7 +288,7 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         />
       )}
 
-      {/* Modal Đang thoại WebRTC Thực tế */}
+      {/* Modal Đang thoại */}
       {activeCall && (
         <CallModal
           isOpen={!!activeCall}
@@ -343,49 +305,8 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         />
       )}
 
-      {/* HEY HEYMEDI: Overlay trợ lý giọng nói khi phát hiện wake word */}
-      <WakeWordOverlay
-        isOpen={isWakeWordOverlayOpen}
-        onClose={() => setIsWakeWordOverlayOpen(false)}
-        onSOS={() => setIsGlobalSOSOpen(true)}
-        onReadMeds={() => setActiveTab("meds")}
-        onCallFamily={() => setActiveTab("family")}
-        userName={user?.user_metadata?.full_name || "Bác"}
-      />
-
-      {/* Nút "Hey HeyMedi" Nổi (thay nút SOS cũ) – Bấm để mở overlay hoặc nói "heymedi" */}
-      {heyMediEnabled && (
-        <button
-          onClick={() => setIsWakeWordOverlayOpen(true)}
-          aria-label="Hey HeyMedi - Trợ lý giọng nói"
-          className="fixed right-4 z-50 flex items-center gap-2 pl-3 pr-3.5 py-2.5 rounded-full shadow-lg border-2 border-white active:scale-90 hover:scale-105 transition-all cursor-pointer select-none group"
-          style={{ bottom: '88px' }}
-        >
-          {/* Hiệu ứng sóng khi đang lắng nghe */}
-          {isWakeWordListening && (
-            <span className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-          )}
-          <div className={cn(
-            "relative w-9 h-9 rounded-full flex items-center justify-center shrink-0 shadow-sm transition-all",
-            isWakeWordListening 
-              ? "bg-gradient-to-br from-primary to-blue-600 text-white" 
-              : wakeWordState === "error" || wakeWordState === "unsupported"
-              ? "bg-gray-400 text-white"
-              : "bg-gradient-to-br from-primary to-blue-500 text-white"
-          )}>
-            <Mic size={20} strokeWidth={2.5} />
-            {isWakeWordListening && (
-              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border border-white animate-pulse" />
-            )}
-          </div>
-          <div className="flex flex-col text-left relative">
-            <span className="font-black text-xs leading-tight tracking-wide text-primary">HeyMedi</span>
-            <span className="text-[9px] font-bold text-gray-400 leading-tight">
-              {isWakeWordListening ? "Đang nghe..." : wakeWordState === "error" ? "Lỗi mic" : "Nói để kích hoạt"}
-            </span>
-          </div>
-        </button>
-      )}
+      {/* CHÍNH LÀ NÓ ĐÂY: Trợ lý AI sóng âm hoàn toàn tự động */}
+      <WakeWordOverlay />
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto pb-6 min-h-0 overscroll-contain">
@@ -401,12 +322,12 @@ export default function ElderlyApp({ user, onLogout }: Props) {
         {activeTab === "settings" && <SettingsScreen user={user} onLogout={onLogout} />}
       </div>
 
-      {/* Bottom Navigation: GHIM CỐ ĐỊNH Ở ĐÁY VỚI NÚT QUÉT QR TO Ở CHÍNH GIỮA */}
+      {/* Bottom Navigation */}
       <div className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-100 px-2 py-2 flex flex-row justify-around items-center rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40 relative">
         <NavItem icon={<Home size={22} />} label={t("nav.home")} isActive={activeTab === "home"} onClick={() => setActiveTab("home")} />
         <NavItem icon={<Pill size={22} />} label={t("nav.meds")} isActive={activeTab === "meds"} onClick={() => setActiveTab("meds")} />
         
-        {/* Nút Quét QR To Nổi Bật Ở Chính Giữa */}
+        {/* Nút Quét QR To */}
         <button
           onClick={() => setIsScanModalOpen(true)}
           className="flex flex-col items-center justify-center -mt-6 cursor-pointer group active:scale-95 transition-transform"
